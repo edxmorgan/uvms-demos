@@ -125,6 +125,14 @@ class PS4Controller(Controller):
         with self.ros_node.controller_lock:
             self.ros_node.rov_surge = 0.0
 
+    def on_R1_press(self):
+        with self.ros_node.controller_lock:
+            self.ros_node.rov_roll = self.orient_max_torque
+            
+    def on_L1_press(self):
+        with self.ros_node.controller_lock:
+            self.ros_node.rov_roll = -self.orient_max_torque
+            
     def on_R3_up(self, value):
         scaled = self.orient_max_torque * (value / 32767.0)
         with self.ros_node.controller_lock:
@@ -155,17 +163,9 @@ class PS4Controller(Controller):
         with self.ros_node.controller_lock:
             self.ros_node.rov_pitch = 0.0
 
-    def on_L1_press(self):
-        with self.ros_node.controller_lock:
-            self.ros_node.rov_roll = -self.orient_max_torque
-
     def on_L1_release(self):
         with self.ros_node.controller_lock:
             self.ros_node.rov_roll = 0.0
-
-    def on_R1_press(self):
-        with self.ros_node.controller_lock:
-            self.ros_node.rov_roll = self.orient_max_torque
 
     def on_R1_release(self):
         with self.ros_node.controller_lock:
@@ -309,6 +309,10 @@ class Axis_Interface_names:
     imu_roll = "imu_roll"
     imu_pitch = "imu_pitch"
     imu_yaw = "imu_yaw"
+
+    imu_roll_unwrap = "imu_roll_unwrap"
+    imu_pitch_unwrap = "imu_pitch_unwrap"
+    imu_yaw_unwrap = "imu_yaw_unwrap"
 
     imu_q_w = "imu_orientation_w"
     imu_q_x = "imu_orientation_x"
@@ -494,26 +498,31 @@ class Robot(Base):
 
         self.node = node
 
-        self.sensors = [Axis_Interface_names.imu_roll,
-                    Axis_Interface_names.imu_pitch,
-                    Axis_Interface_names.imu_yaw,
-                    Axis_Interface_names.imu_q_w,
-                    Axis_Interface_names.imu_q_x,
-                    Axis_Interface_names.imu_q_y,
-                    Axis_Interface_names.imu_q_z,
-                    Axis_Interface_names.imu_wx,
-                    Axis_Interface_names.imu_wy,
-                    Axis_Interface_names.imu_wz,
-                    Axis_Interface_names.imu_ax,
-                    Axis_Interface_names.imu_ay,
-                    Axis_Interface_names.imu_az,
-                    Axis_Interface_names.depth_pressure2,
-                    Axis_Interface_names.dvl_roll,
-                    Axis_Interface_names.dvl_pitch,
-                    Axis_Interface_names.dvl_yaw,
-                    Axis_Interface_names.dvl_speed_x,
-                    Axis_Interface_names.dvl_speed_y,
-                    Axis_Interface_names.dvl_speed_z]
+        self.sensors = [
+            Axis_Interface_names.imu_roll,
+            Axis_Interface_names.imu_pitch,
+            Axis_Interface_names.imu_yaw,
+            Axis_Interface_names.imu_roll_unwrap,
+            Axis_Interface_names.imu_pitch_unwrap,
+            Axis_Interface_names.imu_yaw_unwrap,
+            Axis_Interface_names.imu_q_w,
+            Axis_Interface_names.imu_q_x,
+            Axis_Interface_names.imu_q_y,
+            Axis_Interface_names.imu_q_z,
+            Axis_Interface_names.imu_wx,
+            Axis_Interface_names.imu_wy,
+            Axis_Interface_names.imu_wz,
+            Axis_Interface_names.imu_ax,
+            Axis_Interface_names.imu_ay,
+            Axis_Interface_names.imu_az,
+            Axis_Interface_names.depth_pressure2,
+            Axis_Interface_names.dvl_roll,
+            Axis_Interface_names.dvl_pitch,
+            Axis_Interface_names.dvl_yaw,
+            Axis_Interface_names.dvl_speed_x,
+            Axis_Interface_names.dvl_speed_y,
+            Axis_Interface_names.dvl_speed_z
+            ]
         self.prediction_interfaces = [
             "position.x", "position.y", "position.z", "roll", "pitch", "yaw",
             "orientation.w", "orientation.x", "orientation.y", "orientation.z", 
@@ -938,7 +947,9 @@ class Robot(Base):
                     'q_alpha_axis_e', 'q_alpha_axis_d', 'q_alpha_axis_c', 'q_alpha_axis_b',
                     'dq_alpha_axis_e', 'dq_alpha_axis_d', 'dq_alpha_axis_c', 'dq_alpha_axis_b',
 
-                    'imu_roll', 'imu_pitch', 'imu_yaw', 'imu_q_w', 'imu_q_x', 'imu_q_y', 'imu_q_z',
+                    'imu_roll', 'imu_pitch', 'imu_yaw',
+                    'imu_roll_unwrap', 'imu_pitch_unwrap', 'imu_yaw_unwrap',
+                    'imu_q_w', 'imu_q_x', 'imu_q_y', 'imu_q_z',
                     'imu_ang_vel_x', 'imu_ang_vel_y','imu_ang_vel_z',
                     'imu_linear_acc_x', 'imu_linear_acc_y','imu_linear_acc_z',
                     'depth_from_pressure2',
