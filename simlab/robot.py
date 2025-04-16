@@ -30,7 +30,7 @@ import random
 import copy
 from blue_rov import Params as blue
 from alpha_reach import Params as alpha
-
+from std_msgs.msg import Float32
 # Import the PS4 controller library.
 from pyPS4Controller.controller import Controller
 import threading
@@ -44,6 +44,13 @@ class PS4Controller(Controller):
         super().__init__(**kwargs)
         self.ros_node = ros_node
 
+        # combination‐state tracking
+        self.buttons_pressed = set()
+
+        # running values
+        self.light_value = 0.0
+        self.mount_value = 0.0
+        
         sim_gain = 5.0
         real_gain = 5.0
         self.gain = sim_gain
@@ -125,11 +132,15 @@ class PS4Controller(Controller):
         with self.ros_node.controller_lock:
             self.ros_node.rov_surge = 0.0
 
+    # —— R1 press/release for combo tracking ——
     def on_R1_press(self):
+        self.buttons_pressed.add('R1')
         with self.ros_node.controller_lock:
             self.ros_node.rov_roll = self.orient_max_torque
             
+    # —— L1 press/release just updates our set and your roll logic ——
     def on_L1_press(self):
+        self.buttons_pressed.add('L1')
         with self.ros_node.controller_lock:
             self.ros_node.rov_roll = -self.orient_max_torque
             
@@ -164,29 +175,18 @@ class PS4Controller(Controller):
             self.ros_node.rov_pitch = 0.0
 
     def on_L1_release(self):
+        self.buttons_pressed.discard('L1')
         with self.ros_node.controller_lock:
             self.ros_node.rov_roll = 0.0
 
     def on_R1_release(self):
+        self.buttons_pressed.discard('R1')
         with self.ros_node.controller_lock:
             self.ros_node.rov_roll = 0.0
 
 
     #
     # ---------------- Manipulator Controls ----------------
-    # Mapping:
-    #   - Manipulator index 0 (left/right):  
-    #       on_left_arrow_press  → -1.0  
-    #       on_right_arrow_press → +1.0  
-    #       on_left_right_arrow_release → 0.0  
-    #
-    #   - Manipulator index 1 (up/down):  
-    #       on_up_arrow_press   → +1.0  
-    #       on_down_arrow_press → -1.0  
-    #       on_up_down_arrow_release → 0.0  
-    #
-    #   - Indices 2, 3, and 4 remain unchanged.
-    #
     # Manipulator index 0 (left/right):
     def on_left_arrow_press(self):
         with self.ros_node.controller_lock:
@@ -201,17 +201,59 @@ class PS4Controller(Controller):
             self.ros_node.jointe = 0.0
 
     # Manipulator index 1 (up/down):
+    # —— D‑pad Up: lights, mount, or manipulator ——
     def on_up_arrow_press(self):
-        with self.ros_node.controller_lock:
-            self.ros_node.jointd = 2.0
+        if 'L1' in self.buttons_pressed:
+            # L1 combo → lights
+            self.light_value = 10.0
+            msg = Float32(data=self.light_value)
+            self.ros_node.light_publisher_.publish(msg)
 
+        elif 'R1' in self.buttons_pressed:
+            # R1 combo → mount pitch up
+            self.mount_value = 10.0
+            msg = Float32(data=self.mount_value)
+            self.ros_node.mountPitch_publisher_.publish(msg)
+
+        else:
+            # normal manipulator
+            with self.ros_node.controller_lock:
+                self.ros_node.jointd = 2.0
+
+    # —— D‑pad Down: lights, mount, or manipulator ——
     def on_down_arrow_press(self):
-        with self.ros_node.controller_lock:
-            self.ros_node.jointd = -2.0
+        if 'L1' in self.buttons_pressed:
+            # L1 combo → lights down
+            self.light_value = -10.0
+            msg = Float32(data=self.light_value)
+            self.ros_node.light_publisher_.publish(msg)
 
+        elif 'R1' in self.buttons_pressed:
+            # R1 combo → mount pitch down
+            self.mount_value = -10.0
+            msg = Float32(data=self.mount_value)
+            self.ros_node.mountPitch_publisher_.publish(msg)
+
+        else:
+            # normal manipulator
+            with self.ros_node.controller_lock:
+                self.ros_node.jointd = -2.0
+
+    # —— Release of either up or down arrow needs to reset joint d ——
+    # —— D‑pad release: zero out whichever combo was active ——
     def on_up_down_arrow_release(self):
-        with self.ros_node.controller_lock:
-            self.ros_node.jointd = 0.0
+        if 'L1' in self.buttons_pressed:
+            # stop lights
+            self.ros_node.light_publisher_.publish(Float32(data=0.0))
+
+        if 'R1' in self.buttons_pressed:
+            # stop mount pitch
+            self.ros_node.mountPitch_publisher_.publish(Float32(data=0.0))
+
+        # if no combo, reset manipulator
+        if 'L1' not in self.buttons_pressed and 'R1' not in self.buttons_pressed:
+            with self.ros_node.controller_lock:
+                self.ros_node.jointd = 0.0
 
     # Manipulator index 2: Triangle (positive) / X (negative)
     def on_triangle_press(self):
@@ -247,7 +289,7 @@ class PS4Controller(Controller):
         with self.ros_node.controller_lock:
             self.ros_node.jointb = 0.0
 
-    # Manipulator index 4: Options (positive) / Share (negative)
+    # Manipulator index 4: sticks
     def on_R3_press(self):
         with self.ros_node.controller_lock:
             self.ros_node.jointa = 1.0
@@ -262,8 +304,7 @@ class PS4Controller(Controller):
 
     def on_L3_release(self):
         with self.ros_node.controller_lock:
-            self.ros_node.jointa = 0.0
-            
+            self.ros_node.jointa = 0.0     
 
 class Base:
     def get_interface_value(self, msg: DynamicJointState, dof_names: list, interface_names: list):
@@ -576,6 +617,9 @@ class Robot(Base):
 
         self.path_ops_publisher = self.node.create_publisher(Path, f'/{self.prefix}desiredOpsPath', qos_profile)
         self.trajectory_path_ops_publisher = self.node.create_publisher(Path, f'/{self.prefix}robotOpsPath', qos_profile)
+
+        self.mountPitch_publisher_ = self.node.create_publisher(Float32, '/alpha/cameraMountPitch', 10)
+        self.light_publisher_ = self.node.create_publisher(Float32, '/alpha/lights', 10)
 
         self.ref_acc = np.zeros(10)
         self.ref_vel = np.zeros(10)
