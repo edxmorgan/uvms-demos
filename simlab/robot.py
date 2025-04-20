@@ -60,8 +60,8 @@ class PS4Controller(Controller):
         # Gains for different DOFs
         self.max_torque = self.gain * 2.0             # for surge/sway
         self.heave_max_torque = self.gain * 3.0         # for heave (L2/R2)
-        self.orient_max_torque = self.gain * 0.7        # for roll, pitch,
-        self.yaw_max_torque = self.gain * 0.2 # for yaw
+        self.orient_max_torque = self.gain * 3.0        # for roll, pitch,
+        self.yaw_max_torque = self.gain * 0.4 # for yaw
 
         # # Create a lock specifically for updating gain values.
         # self.gain_lock = threading.Lock()
@@ -147,12 +147,12 @@ class PS4Controller(Controller):
     def on_R3_up(self, value):
         scaled = self.orient_max_torque * (value / 32767.0)
         with self.ros_node.controller_lock:
-            self.ros_node.rov_pitch = scaled
+            self.ros_node.rov_pitch = -scaled
 
     def on_R3_down(self, value):
         scaled = self.orient_max_torque * (value / 32767.0)
         with self.ros_node.controller_lock:
-            self.ros_node.rov_pitch = scaled
+            self.ros_node.rov_pitch = -scaled
 
     def on_R3_left(self, value):
         scaled = self.yaw_max_torque * (value / 32767.0)
@@ -774,6 +774,11 @@ class Robot(Base):
             msg,
             [self.floating_base] * len(self.prediction_interfaces),
             self.prediction_interfaces
+        )
+        self.state_estimate_readings = self.get_interface_value(
+            msg,
+            [self.floating_base] * len(self.state_estimate_interfaces),
+            self.state_estimate_interfaces
         )
 
         self.body_forces = self.get_interface_value(
