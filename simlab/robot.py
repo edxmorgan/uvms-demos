@@ -577,6 +577,8 @@ class Robot(Base):
             "orientation_estimate.w", "orientation_estimate.x", "orientation_estimate.y", "orientation_estimate.z",
             "velocity_estimate.x", "velocity_estimate.y", "velocity_estimate.z",
             "angular_velocity_estimate.x", "angular_velocity_estimate.y", "angular_velocity_estimate.z",
+            "P_x_x", "P_y_y", "P_z_z", "P_roll_roll", "P_pitch_pitch", "P_yaw_yaw",
+            "P_u_u", "P_v_v", "P_w_w", "P_p_p", "P_q_q", "P_r_r"
         ]
 
         self.n_joint = n_joint
@@ -1018,6 +1020,8 @@ class Robot(Base):
                     "orientation_estimate.w", "orientation_estimate.x", "orientation_estimate.y", "orientation_estimate.z",
                     "velocity_estimate.x", "velocity_estimate.y", "velocity_estimate.z",
                     "angular_velocity_estimate.x", "angular_velocity_estimate.y", "angular_velocity_estimate.z",
+                    "P_x_x", "P_y_y", "P_z_z", "P_roll_roll", "P_pitch_pitch", "P_yaw_yaw",
+                    "P_u_u", "P_v_v", "P_w_w", "P_p_p", "P_q_q", "P_r_r"
                 ]
                 self.csv_writer.writerow(columns)
     
