@@ -43,9 +43,9 @@ class PS4Controller(Controller):
     def __init__(self, ros_node, prefix, **kwargs):
         super().__init__(**kwargs)
         self.ros_node = ros_node
-
-        # combination‐state tracking
-        self.buttons_pressed = set()
+        
+        # mode flag: False = joint control, True = light & mount control
+        self.options_mode = False
 
         # running values
         self.light_value = 0.0
@@ -54,8 +54,7 @@ class PS4Controller(Controller):
         sim_gain = 5.0
         real_gain = 5.0
         self.gain = sim_gain
-        if 'real' in prefix:
-            self.gain = real_gain
+        self.gain = real_gain if 'real' in prefix else sim_gain
 
         # Gains for different DOFs
         self.max_torque = self.gain * 2.0             # for surge/sway
@@ -85,25 +84,34 @@ class PS4Controller(Controller):
     #         # Keep this gain for 8 seconds.
     #         time.sleep(8)
 
-    # --- Analog stick and button callbacks below ---
+   # —— Options toggles between modes ——    
+    def on_options_press(self):
+        self.options_mode = not self.options_mode
+        # if returning to joint mode, zero out any light/mount commands
+        if not self.options_mode:
+            self.ros_node.light_publisher_.publish(Float32(data=0.0))
+            self.ros_node.mountPitch_publisher_.publish(Float32(data=0.0))
+
+    # —— Heave (unchanged) ——    
     def on_L2_press(self, value):
-        scaled_value = self.heave_max_torque * (value / 32767.0)
+        scaled = self.heave_max_torque * (value / 32767.0)
         with self.ros_node.controller_lock:
-            self.ros_node.rov_z = -scaled_value
+            self.ros_node.rov_z = -scaled
 
     def on_L2_release(self):
         with self.ros_node.controller_lock:
             self.ros_node.rov_z = 0.0
 
     def on_R2_press(self, value):
-        scaled_value = self.heave_max_torque * (value / 32767.0)
+        scaled = self.heave_max_torque * (value / 32767.0)
         with self.ros_node.controller_lock:
-            self.ros_node.rov_z = scaled_value
+            self.ros_node.rov_z = scaled
 
     def on_R2_release(self):
         with self.ros_node.controller_lock:
             self.ros_node.rov_z = 0.0
 
+    # —— Surge & Sway (unchanged) ——    
     def on_L3_up(self, value):
         scaled = self.max_torque * (value / 32767.0)
         with self.ros_node.controller_lock:
@@ -132,18 +140,24 @@ class PS4Controller(Controller):
         with self.ros_node.controller_lock:
             self.ros_node.rov_surge = 0.0
 
-    # —— R1 press/release for combo tracking ——
+    # —— Roll control (unchanged) ——    
     def on_R1_press(self):
-        self.buttons_pressed.add('R1')
         with self.ros_node.controller_lock:
-            self.ros_node.rov_roll = self.orient_max_torque
-            
-    # —— L1 press/release just updates our set and your roll logic ——
+            self.ros_node.rov_roll =  self.orient_max_torque
+
     def on_L1_press(self):
-        self.buttons_pressed.add('L1')
         with self.ros_node.controller_lock:
             self.ros_node.rov_roll = -self.orient_max_torque
-            
+
+    def on_R1_release(self):
+        with self.ros_node.controller_lock:
+            self.ros_node.rov_roll = 0.0
+
+    def on_L1_release(self):
+        with self.ros_node.controller_lock:
+            self.ros_node.rov_roll = 0.0
+
+    # —— Pitch & Yaw (unchanged) ——    
     def on_R3_up(self, value):
         scaled = self.orient_max_torque * (value / 32767.0)
         with self.ros_node.controller_lock:
@@ -158,13 +172,11 @@ class PS4Controller(Controller):
         scaled = self.yaw_max_torque * (value / 32767.0)
         with self.ros_node.controller_lock:
             self.ros_node.rov_yaw = scaled
-            # self.ros_node.node.get_logger().info(f"self.ros_node.rov_yaw sent {self.ros_node.rov_yaw}.")
 
     def on_R3_right(self, value):
         scaled = self.yaw_max_torque * (value / 32767.0)
         with self.ros_node.controller_lock:
             self.ros_node.rov_yaw = scaled
-            # self.ros_node.node.get_logger().info(f"self.ros_node.rov_yaw sent {self.ros_node.rov_yaw}.")
 
     def on_R3_x_at_rest(self):
         with self.ros_node.controller_lock:
@@ -174,88 +186,51 @@ class PS4Controller(Controller):
         with self.ros_node.controller_lock:
             self.ros_node.rov_pitch = 0.0
 
-    def on_L1_release(self):
-        self.buttons_pressed.discard('L1')
-        with self.ros_node.controller_lock:
-            self.ros_node.rov_roll = 0.0
-
-    def on_R1_release(self):
-        self.buttons_pressed.discard('R1')
-        with self.ros_node.controller_lock:
-            self.ros_node.rov_roll = 0.0
-
-
-    #
-    # ---------------- Manipulator Controls ----------------
-    # Manipulator index 0 (left/right):
+    # —— D‑pad Left/Right ——    
     def on_left_arrow_press(self):
-        with self.ros_node.controller_lock:
-            self.ros_node.jointe = -3.0
+        if self.options_mode:
+            self.ros_node.light_publisher_.publish(Float32(data=-10.0))
+        else:
+            with self.ros_node.controller_lock:
+                self.ros_node.jointe = -3.0
 
     def on_right_arrow_press(self):
-        with self.ros_node.controller_lock:
-            self.ros_node.jointe = 3.0
+        if self.options_mode:
+            self.ros_node.light_publisher_.publish(Float32(data=10.0))
+        else:
+            with self.ros_node.controller_lock:
+                self.ros_node.jointe = 3.0
 
     def on_left_right_arrow_release(self):
-        with self.ros_node.controller_lock:
-            self.ros_node.jointe = 0.0
-
-    # Manipulator index 1 (up/down):
-    # —— D‑pad Up: lights, mount, or manipulator ——
-    def on_up_arrow_press(self):
-        if 'L1' in self.buttons_pressed:
-            # L1 combo → lights
-            self.light_value = 10.0
-            msg = Float32(data=self.light_value)
-            self.ros_node.light_publisher_.publish(msg)
-
-        elif 'R1' in self.buttons_pressed:
-            # R1 combo → mount pitch up
-            self.mount_value = 10.0
-            msg = Float32(data=self.mount_value)
-            self.ros_node.mountPitch_publisher_.publish(msg)
-
+        if self.options_mode:
+            self.ros_node.light_publisher_.publish(Float32(data=0.0))
         else:
-            # normal manipulator
+            with self.ros_node.controller_lock:
+                self.ros_node.jointe = 0.0
+
+    # —— D‑pad Up/Down ——    
+    def on_up_arrow_press(self):
+        if self.options_mode:
+            self.ros_node.mountPitch_publisher_.publish(Float32(data=10.0))
+        else:
             with self.ros_node.controller_lock:
                 self.ros_node.jointd = 2.0
 
-    # —— D‑pad Down: lights, mount, or manipulator ——
     def on_down_arrow_press(self):
-        if 'L1' in self.buttons_pressed:
-            # L1 combo → lights down
-            self.light_value = -10.0
-            msg = Float32(data=self.light_value)
-            self.ros_node.light_publisher_.publish(msg)
-
-        elif 'R1' in self.buttons_pressed:
-            # R1 combo → mount pitch down
-            self.mount_value = -10.0
-            msg = Float32(data=self.mount_value)
-            self.ros_node.mountPitch_publisher_.publish(msg)
-
+        if self.options_mode:
+            self.ros_node.mountPitch_publisher_.publish(Float32(data=-10.0))
         else:
-            # normal manipulator
             with self.ros_node.controller_lock:
                 self.ros_node.jointd = -2.0
 
-    # —— Release of either up or down arrow needs to reset joint d ——
-    # —— D‑pad release: zero out whichever combo was active ——
     def on_up_down_arrow_release(self):
-        if 'L1' in self.buttons_pressed:
-            # stop lights
-            self.ros_node.light_publisher_.publish(Float32(data=0.0))
-
-        if 'R1' in self.buttons_pressed:
-            # stop mount pitch
+        if self.options_mode:
             self.ros_node.mountPitch_publisher_.publish(Float32(data=0.0))
-
-        # if no combo, reset manipulator
-        if 'L1' not in self.buttons_pressed and 'R1' not in self.buttons_pressed:
+        else:
             with self.ros_node.controller_lock:
                 self.ros_node.jointd = 0.0
 
-    # Manipulator index 2: Triangle (positive) / X (negative)
+    # —— Manipulator buttons (unchanged) ——    
     def on_triangle_press(self):
         with self.ros_node.controller_lock:
             self.ros_node.jointc = 2.0
@@ -272,7 +247,6 @@ class PS4Controller(Controller):
         with self.ros_node.controller_lock:
             self.ros_node.jointc = 0.0
 
-    # Manipulator index 3: Square (positive) / Circle (negative)
     def on_square_press(self):
         with self.ros_node.controller_lock:
             self.ros_node.jointb = 1.0
@@ -289,7 +263,6 @@ class PS4Controller(Controller):
         with self.ros_node.controller_lock:
             self.ros_node.jointb = 0.0
 
-    # Manipulator index 4: sticks
     def on_R3_press(self):
         with self.ros_node.controller_lock:
             self.ros_node.jointa = 1.0
@@ -304,7 +277,7 @@ class PS4Controller(Controller):
 
     def on_L3_release(self):
         with self.ros_node.controller_lock:
-            self.ros_node.jointa = 0.0     
+            self.ros_node.jointa = 0.0
 
 class Base:
     def get_interface_value(self, msg: DynamicJointState, dof_names: list, interface_names: list):
