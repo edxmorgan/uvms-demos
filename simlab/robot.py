@@ -60,7 +60,7 @@ class PS4Controller(Controller):
         # Gains for different DOFs
         self.max_torque = self.gain * 2.0             # for surge/sway
         self.heave_max_torque = self.gain * 3.0         # for heave (L2/R2)
-        self.orient_max_torque = self.gain * 3.0        # for roll, pitch,
+        self.orient_max_torque = self.gain * 0.8        # for roll, pitch,
         self.yaw_max_torque = self.gain * 0.4 # for yaw
 
         # # Create a lock specifically for updating gain values.
@@ -147,12 +147,12 @@ class PS4Controller(Controller):
     def on_R3_up(self, value):
         scaled = self.orient_max_torque * (value / 32767.0)
         with self.ros_node.controller_lock:
-            self.ros_node.rov_pitch = -scaled
+            self.ros_node.rov_pitch = scaled
 
     def on_R3_down(self, value):
         scaled = self.orient_max_torque * (value / 32767.0)
         with self.ros_node.controller_lock:
-            self.ros_node.rov_pitch = -scaled
+            self.ros_node.rov_pitch = scaled
 
     def on_R3_left(self, value):
         scaled = self.yaw_max_torque * (value / 32767.0)
