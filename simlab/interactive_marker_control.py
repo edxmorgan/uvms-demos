@@ -53,9 +53,6 @@ class BasicControlsNode(Node):
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
-        uvms_IK_path = os.path.join(package_share_directory, 'uvms_iK.casadi')
-        self.uvms_IK = ca.Function.load(uvms_IK_path)
-
         uvms_FK_path = os.path.join(package_share_directory, 'fk_eval.casadi')
         self.uvms_FK = ca.Function.load(uvms_FK_path)
 
