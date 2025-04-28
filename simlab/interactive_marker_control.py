@@ -154,7 +154,7 @@ class BasicControlsNode(Node):
                       self.q2_des, 
                       self.q3_des])
         temp_dm = self.uvms_FK(self.n_int_est, alpha.base_T0)
-        self.last_valid_task_pose = self.dm_to_pose(temp_dm)
+        self.last_valid_task_pose = self.dm_to_pose(temp_dm[4])
 
         self.task_marker = self.make_UVMS_Dof_Marker(
             name='task_marker',

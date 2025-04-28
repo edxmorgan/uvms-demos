@@ -494,21 +494,10 @@ class Robot(Base):
                 'simlab')
         fk_path = os.path.join(package_share_directory, 'fk_eval.casadi')
 
-        vehicle_C_path = os.path.join(package_share_directory, 'vehicle/C.casadi')
-        vehicle_M_path = os.path.join(package_share_directory, 'vehicle/M.casadi')
         vehicle_J_path = os.path.join(package_share_directory, 'vehicle/J_uv.casadi')
 
-        manipulator_C_path = os.path.join(package_share_directory, 'manipulator/C.casadi')
-        manipulator_M_path = os.path.join(package_share_directory, 'manipulator/M.casadi')
-
         self.fk_eval = ca.Function.load(fk_path) # differential inverse kinematics
-
-        self.vehicle_C = ca.Function.load(vehicle_C_path)
-        self.vehicle_M = ca.Function.load(vehicle_M_path)
         self.vehicle_J = ca.Function.load(vehicle_J_path)
-
-        self.manipulator_C = ca.Function.load(manipulator_C_path)
-        self.manipulator_M = ca.Function.load(manipulator_M_path)
 
         self.node = node
 
