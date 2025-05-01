@@ -232,7 +232,7 @@ class BasicControlsNode(Node):
                     robot.pose_command = state['pose']
                     robot.arm.q_command = state['q'] + [0.0]
                     command_msg.pose.data.extend(robot.pose_command + robot.arm.q_command)
-                
+            robot.write_data_to_file() 
 
         self.uvms_publisher_.publish(command_msg)
 

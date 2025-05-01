@@ -26,9 +26,9 @@ from uvms_interfaces.msg import Command
 from robot import Robot
 
 
-class Experimental_Node(Node):
+class Dof_Control_Node(Node):
     def __init__(self):
-        super().__init__('exp_node',
+        super().__init__('dof_control_node',
                          automatically_declare_parameters_from_overrides=True)
 
         # Retrieve parameters (e.g. number of robots, efforts, and robot prefixes).
@@ -63,9 +63,8 @@ class Experimental_Node(Node):
         command_msg.twist.data = [0.0]*11
         command_msg.pose.data = []
         for robot in self.robots:
-            # robot.publish_robot_path()
-            ref0= [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 1.0, 1.0, 1.0, 0.0]
-            ref1= [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 4.0, 3.0, 3.0, 4.0, 0.0]
+            robot.publish_robot_path()
+            ref1= [2.0, 3.0, 2.0, 0.0, 0.0, 0.0, 4.0, 3.0, 3.0, 4.0, 0.0]
 
             ref = ref1
             command_msg.pose.data.extend(ref)
@@ -83,13 +82,13 @@ class Experimental_Node(Node):
 ###############################################################################
 def main(args=None):
     rclpy.init(args=args)
-    exp_node = Experimental_Node()
+    dof_control_node = Dof_Control_Node()
     try:
-        rclpy.spin(exp_node)
+        rclpy.spin(dof_control_node)
     except KeyboardInterrupt:
-        exp_node.get_logger().info('Experimental node stopped by KeyboardInterrupt.')
+        dof_control_node.get_logger().info('dof_control node stopped by KeyboardInterrupt.')
     finally:
-        exp_node.destroy_node()
+        dof_control_node.destroy_node()
         rclpy.shutdown()
 
 

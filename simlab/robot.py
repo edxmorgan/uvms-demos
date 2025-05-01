@@ -543,8 +543,11 @@ class Robot(Base):
             "P_u_u", "P_v_v", "P_w_w", "P_p_p", "P_q_q", "P_r_r"
         ]
 
+        self.payload_state_interfaces = ["payload.mass", "payload.Ixx", "payload.Iyy", "payload.Izz"]
+
         self.n_joint = n_joint
-        self.floating_base = f'{prefix}IOs'
+        self.floating_base_IOs = f'{prefix}IOs'
+        self.arm_IOs = f'{prefix}_arm_IOs'
         self.arm = Manipulator(node, n_joint, prefix)
         self.ned_pose = [0] * 6
         self.body_vel = [0] * 6
@@ -552,6 +555,7 @@ class Robot(Base):
         self.sensor_reading = [0] * len(self.sensors)
         self.prediction_readings = [0] * len(self.prediction_interfaces)
         self.state_estimate_readings = [0] * len(self.state_estimate_interfaces)
+        self.payload_state_readings = [0] * len(self.payload_state_interfaces)
         self.body_forces = [0] * 6
         self.gt_measurements = [0] * 6
         self.prefix = prefix
@@ -701,7 +705,7 @@ class Robot(Base):
         self.arm.update_state(msg)
         self.ned_pose = self.get_interface_value(
             msg,
-            [self.floating_base] * 6,
+            [self.floating_base_IOs] * 6,
             [
                 Axis_Interface_names.floating_base_x,
                 Axis_Interface_names.floating_base_y,
@@ -715,7 +719,7 @@ class Robot(Base):
 
         self.body_vel = self.get_interface_value(
             msg,
-            [self.floating_base] * 6,
+            [self.floating_base_IOs] * 6,
             [
                 Axis_Interface_names.floating_dx,
                 Axis_Interface_names.floating_dy,
@@ -730,24 +734,30 @@ class Robot(Base):
         
         self.sensor_reading = self.get_interface_value(
             msg,
-            [self.floating_base] * len(self.sensors),
+            [self.floating_base_IOs] * len(self.sensors),
             self.sensors
         )
 
         self.prediction_readings = self.get_interface_value(
             msg,
-            [self.floating_base] * len(self.prediction_interfaces),
+            [self.floating_base_IOs] * len(self.prediction_interfaces),
             self.prediction_interfaces
         )
         self.state_estimate_readings = self.get_interface_value(
             msg,
-            [self.floating_base] * len(self.state_estimate_interfaces),
+            [self.floating_base_IOs] * len(self.state_estimate_interfaces),
             self.state_estimate_interfaces
+        )
+
+        self.payload_state_readings = self.get_interface_value(
+            msg,
+            [self.arm_IOs] * len(self.payload_state_interfaces),
+            self.payload_state_interfaces
         )
 
         self.body_forces = self.get_interface_value(
             msg,
-            [self.floating_base] * 6,
+            [self.floating_base_IOs] * 6,
             [
             Axis_Interface_names.floating_force_x,
             Axis_Interface_names.floating_force_y, 
@@ -758,7 +768,7 @@ class Robot(Base):
             ]
         )
    
-        dynamics_sim_time = self.get_interface_value(msg,[self.floating_base],[Axis_Interface_names.sim_time])[0]
+        dynamics_sim_time = self.get_interface_value(msg,[self.floating_base_IOs],[Axis_Interface_names.sim_time])[0]
         if self.status == 'inactive':
             self.start_time = copy.copy(dynamics_sim_time)
             self.status = 'active'
@@ -983,7 +993,9 @@ class Robot(Base):
                     "velocity_estimate.x", "velocity_estimate.y", "velocity_estimate.z",
                     "angular_velocity_estimate.x", "angular_velocity_estimate.y", "angular_velocity_estimate.z",
                     "P_x_x", "P_y_y", "P_z_z", "P_roll_roll", "P_pitch_pitch", "P_yaw_yaw",
-                    "P_u_u", "P_v_v", "P_w_w", "P_p_p", "P_q_q", "P_r_r"
+                    "P_u_u", "P_v_v", "P_w_w", "P_p_p", "P_q_q", "P_r_r",
+
+                    "payload.mass", "payload.Ixx", "payload.Iyy", "payload.Izz"
                 ]
                 self.csv_writer.writerow(columns)
     
@@ -1006,6 +1018,7 @@ class Robot(Base):
             row_data.extend(ref)
             row_data.extend(self.prediction_readings)
             row_data.extend(self.state_estimate_readings)
+            row_data.extend(self.payload_state_readings)
 
             if all(value == 0 for value in row_data):
                 return
