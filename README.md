@@ -32,7 +32,7 @@ Before getting started, ensure you have the following installed:
   ```
 - **scipy**
 - **casadi**
-
+- **pandas**
 ---
 
 ### Quick Start Guide
