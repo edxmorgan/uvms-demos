@@ -272,7 +272,7 @@ class BasicControlsNode(Node):
                 relative_pose = self.get_relative_pose(self.arm_base_pose, self.last_valid_task_pose)
                 self.q0_des, self.q1_des, self.q2_des = self.robots[self.selected_robot_index].arm.ik_solver([
                     relative_pose.position.x, relative_pose.position.y, relative_pose.position.z
-                ])
+                ], pose="underarm")
                 self.get_logger().debug(
                     f"Task marker updated with IK: {self.q0_des, self.q1_des, self.q2_des, self.q3_des}"
                 )

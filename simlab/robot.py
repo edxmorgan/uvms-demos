@@ -428,7 +428,7 @@ class Manipulator(Base):
             'dt':self.sim_period[0]
         }
 
-    def ik_solver(self, target_position, pose="underarm"):
+    def ik_solver(self, target_position, pose="overarm"):
         x = target_position[0]
         y = target_position[1]
         z = target_position[2]
