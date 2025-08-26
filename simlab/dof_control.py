@@ -20,7 +20,6 @@ import numpy as np
 
 # Import ROS2 QoS settings and message type.
 from rclpy.qos import QoSProfile, QoSHistoryPolicy
-from uvms_interfaces.msg import Command
 
 # Import your robot class
 from robot import Robot
@@ -50,28 +49,29 @@ class Dof_Control_Node(Node):
             depth=10
         )
 
-        self.uvms_publisher_ = self.create_publisher(Command, '/uvms_controller/uvms/commands', qos_profile)
+        # self.uvms_publisher_ = self.create_publisher(Command, '/uvms_controller/uvms/commands', qos_profile)
         # Create a timer callback to publish commands at 1000 Hz.
         frequency = 1000  # Hz
         self.timer = self.create_timer(1.0 / frequency, self.timer_callback)
 
 
     def timer_callback(self):
-        command_msg = Command()
-        command_msg.command_type = self.controllers
-        command_msg.acceleration.data = [0.0]*11
-        command_msg.twist.data = [0.0]*11
-        command_msg.pose.data = []
-        for robot in self.robots:
-            robot.publish_robot_path()
-            ref1= [2.0, 3.0, 2.0, 0.0, 0.0, 0.0, 4.0, 3.0, 3.0, 4.0, 0.0]
+        pass
+        # command_msg = Command()
+        # command_msg.command_type = self.controllers
+        # command_msg.acceleration.data = [0.0]*11
+        # command_msg.twist.data = [0.0]*11
+        # command_msg.pose.data = []
+        # for robot in self.robots:
+        #     robot.publish_robot_path()
+        #     ref1= [2.0, 3.0, 2.0, 0.0, 0.0, 0.0, 4.0, 3.0, 3.0, 4.0, 0.0]
 
-            ref = ref1
-            command_msg.pose.data.extend(ref)
-            robot.write_data_to_file(ref)
-        # Publish the command
-        # self.get_logger().info(f'{command_msg.pose.data}')
-        self.uvms_publisher_.publish(command_msg)
+        #     ref = ref1
+        #     command_msg.pose.data.extend(ref)
+        #     robot.write_data_to_file(ref)
+        # # Publish the command
+        # # self.get_logger().info(f'{command_msg.pose.data}')
+        # self.uvms_publisher_.publish(command_msg)
 
     def destroy_node(self):
         super().destroy_node()

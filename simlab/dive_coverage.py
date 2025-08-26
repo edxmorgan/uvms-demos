@@ -16,7 +16,6 @@
 import rclpy
 from rclpy.node import Node
 import numpy as np
-from uvms_interfaces.msg import Command
 from control_msgs.msg import DynamicJointState
 from robot import Robot
 from task import Task
@@ -49,7 +48,7 @@ class CoverageTask(Node):
             depth=10
         )
 
-        self.uvms_publisher_ = self.create_publisher(Command, '/uvms_controller/uvms/commands', qos_profile)
+        # self.uvms_publisher_ = self.create_publisher(Command, '/uvms_controller/uvms/commands', qos_profile)
 
         frequency = 150  # Hz
         self.timer = self.create_timer(1.0 / frequency, self.timer_callback)
@@ -57,43 +56,44 @@ class CoverageTask(Node):
 
 
     def timer_callback(self):
-        command_msg = Command()
-        command_msg.command_type = self.controllers
-        command_msg.acceleration.data = []
-        command_msg.twist.data = []
-        command_msg.pose.data = []
+        pass
+        # command_msg = Command()
+        # command_msg.command_type = self.controllers
+        # command_msg.acceleration.data = []
+        # command_msg.twist.data = []
+        # command_msg.pose.data = []
 
-        for robot_and_task in self.robots_and_tasks:
-            robot, task = robot_and_task
-            state = robot.get_state()
-            if state['status']=='active':
-                sim_t = state['sim_time']
-                sim_dt = state['dt']
+        # for robot_and_task in self.robots_and_tasks:
+        #     robot, task = robot_and_task
+        #     state = robot.get_state()
+        #     if state['status']=='active':
+        #         sim_t = state['sim_time']
+        #         sim_dt = state['dt']
 
-                ref_ned_vel, ref_ned_pos = task.square_velocity_uv_ref(sim_t, T_side=40.0, speed=0.1) #task
+        #         ref_ned_vel, ref_ned_pos = task.square_velocity_uv_ref(sim_t, T_side=40.0, speed=0.1) #task
 
-                robot.set_robot_goals(ref_ned_vel, ref_ned_pos)
-                robot.publish_reference_path()
-                # robot.publish_ops_reference_path()
+        #         robot.set_robot_goals(ref_ned_vel, ref_ned_pos)
+        #         robot.publish_reference_path()
+        #         # robot.publish_ops_reference_path()
                 
-                robot.publish_robot_path()
-                robot.get_robot_goals('ref_pos')
-                command_msg.acceleration.data.extend(robot.get_robot_goals('ref_acc'))
-                command_msg.acceleration.data.extend([0.0]) #endeffector
+        #         robot.publish_robot_path()
+        #         robot.get_robot_goals('ref_pos')
+        #         command_msg.acceleration.data.extend(robot.get_robot_goals('ref_acc'))
+        #         command_msg.acceleration.data.extend([0.0]) #endeffector
 
-                command_msg.twist.data.extend(robot.get_robot_goals('ref_vel'))
-                command_msg.twist.data.extend([0.0]) #endeffector
+        #         command_msg.twist.data.extend(robot.get_robot_goals('ref_vel'))
+        #         command_msg.twist.data.extend([0.0]) #endeffector
 
-                command_msg.pose.data.extend(robot.get_robot_goals('ref_pos'))
-                command_msg.pose.data.extend([0.0]) #endeffector
+        #         command_msg.pose.data.extend(robot.get_robot_goals('ref_pos'))
+        #         command_msg.pose.data.extend([0.0]) #endeffector
 
-                if len(robot.trajectory_twist) > 500:
-                    robot.trajectory_twist.pop(0)
-                    robot.trajectory_poses.pop(0)
+        #         if len(robot.trajectory_twist) > 500:
+        #             robot.trajectory_twist.pop(0)
+        #             robot.trajectory_poses.pop(0)
                 
-        # Publish the command
-        # self.get_logger().info(f'{command_msg.pose.data}')
-        self.uvms_publisher_.publish(command_msg)
+        # # Publish the command
+        # # self.get_logger().info(f'{command_msg.pose.data}')
+        # self.uvms_publisher_.publish(command_msg)
 
     def destroy_node(self):
         super().destroy_node()

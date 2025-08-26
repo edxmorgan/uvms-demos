@@ -20,7 +20,6 @@ import numpy as np
 
 # Import ROS2 QoS settings and message type.
 from rclpy.qos import QoSProfile, QoSHistoryPolicy
-from uvms_interfaces.msg import Command
 
 # Import your robot class
 from robot import Robot
@@ -72,45 +71,46 @@ class PS4TeleopNode(Node):
 
 
     def timer_callback(self):
-        # Create a new command message.
-        command_msg = Command()
-        command_msg.command_type = ["force"]*self.no_robot
+        pass
+        # # Create a new command message.
+        # command_msg = Command()
+        # command_msg.command_type = ["force"]*self.no_robot
        
-        # Build the full command list for all robots.
-        data = []
-        for robot in self.robots:
-            robot.publish_robot_path()
-            robot.publish_gt_path()
-            [surge, sway, heave, roll, pitch, yaw] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-            [e_joint, d_joint, c_joint, b_joint, a_joint] = [0.0, 0.0, 0.0, 0.0, 0.0]
+        # # Build the full command list for all robots.
+        # data = []
+        # for robot in self.robots:
+        #     robot.publish_robot_path()
+        #     robot.publish_gt_path()
+        #     [surge, sway, heave, roll, pitch, yaw] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        #     [e_joint, d_joint, c_joint, b_joint, a_joint] = [0.0, 0.0, 0.0, 0.0, 0.0]
 
-            if robot.has_joystick_interface:
-                # Safely acquire the latest controller values.
-                with robot.controller_lock:
-                    surge = robot.rov_surge
-                    sway = robot.rov_sway
-                    heave = robot.rov_z
-                    roll = robot.rov_roll
-                    pitch = robot.rov_pitch
-                    yaw = robot.rov_yaw
+        #     if robot.has_joystick_interface:
+        #         # Safely acquire the latest controller values.
+        #         with robot.controller_lock:
+        #             surge = robot.rov_surge
+        #             sway = robot.rov_sway
+        #             heave = robot.rov_z
+        #             roll = robot.rov_roll
+        #             pitch = robot.rov_pitch
+        #             yaw = robot.rov_yaw
 
-                    e_joint= robot.jointe
-                    d_joint= robot.jointd
-                    c_joint= robot.jointc
-                    b_joint= robot.jointb
-                    a_joint= robot.jointa
+        #             e_joint= robot.jointe
+        #             d_joint= robot.jointd
+        #             c_joint= robot.jointc
+        #             b_joint= robot.jointb
+        #             a_joint= robot.jointa
 
 
-            rov_command = [surge, sway, heave, roll, pitch, yaw]
-            manipulator_command = [e_joint, d_joint, c_joint, b_joint, a_joint] #[0]*5 # Manipulator command (unused).
+        #     rov_command = [surge, sway, heave, roll, pitch, yaw]
+        #     manipulator_command = [e_joint, d_joint, c_joint, b_joint, a_joint] #[0]*5 # Manipulator command (unused).
 
-            robot.write_data_to_file()
-            # robot.publish_robot_path()  # Assumes each Robot instance handles its own publishing.
-            data.extend(rov_command + manipulator_command)
+        #     robot.write_data_to_file()
+        #     # robot.publish_robot_path()  # Assumes each Robot instance handles its own publishing.
+        #     data.extend(rov_command + manipulator_command)
 
-        command_msg.force.data = [float(value) for value in data]
-        # Publish the command.
-        self.publisher_.publish(command_msg)
+        # command_msg.force.data = [float(value) for value in data]
+        # # Publish the command.
+        # self.publisher_.publish(command_msg)
 
     def destroy_node(self):
         # Optionally, stop the PS4 controller listener here if needed.

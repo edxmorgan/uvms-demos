@@ -26,16 +26,10 @@ from geometry_msgs.msg import PoseStamped
 from rclpy.qos import QoSProfile, QoSHistoryPolicy
 import csv
 from datetime import datetime
-import random
 import copy
-from blue_rov import Params as blue
-from alpha_reach import Params as alpha
 from std_msgs.msg import Float32
-# Import the PS4 controller library.
 from pyPS4Controller.controller import Controller
 import threading
-import random
-import time
 import glob
 
 

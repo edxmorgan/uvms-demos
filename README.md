@@ -30,6 +30,7 @@ Before getting started, ensure you have the following installed:
   ```bash
   sudo pip install pyPS4Controller
   ```
+- **pynput**
 - **scipy**
 - **casadi**
 - **pandas**

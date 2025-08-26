@@ -28,7 +28,6 @@ from visualization_msgs.msg import Marker, InteractiveMarker, InteractiveMarkerC
 from interactive_markers.interactive_marker_server import InteractiveMarkerServer
 from interactive_markers.menu_handler import MenuHandler
 from rclpy.qos import QoSProfile, QoSHistoryPolicy
-from uvms_interfaces.msg import Command
 from robot import Robot
 import tf2_ros
 from geometry_msgs.msg import TransformStamped
@@ -65,7 +64,7 @@ class BasicControlsNode(Node):
         self.total_no_efforts = self.no_robot * self.no_efforts
 
         qos_profile = QoSProfile(history=QoSHistoryPolicy.KEEP_LAST, depth=10)
-        self.uvms_publisher_ = self.create_publisher(Command, '/uvms_controller/uvms/commands', qos_profile)
+        # self.uvms_publisher_ = self.create_publisher(Command, '/uvms_controller/uvms/commands', qos_profile)
 
         self.taskspace_pc_publisher_ = self.create_publisher(PointCloud2, 'workspace_pointcloud', 10)
         self.rov_pc_publisher_ = self.create_publisher(PointCloud2, 'base_pointcloud', 10)
@@ -188,54 +187,54 @@ class BasicControlsNode(Node):
 
         self.broadcast_pose(self.last_vehicle_marker_pose, self.base_frame, self.vehicle_marker_frame)
 
-        command_msg = Command()
-        command_msg.command_type = self.controllers
-        command_msg.acceleration.data = []
-        command_msg.twist.data = []
-        command_msg.pose.data = []
+        # command_msg = Command()
+        # command_msg.command_type = self.controllers
+        # command_msg.acceleration.data = []
+        # command_msg.twist.data = []
+        # command_msg.pose.data = []
 
-        for k, robot in enumerate(self.robots):
-            state = robot.get_state()
-            if state['status'] == 'active':
-                command_msg.acceleration.data.extend(robot.body_acc_command + robot.arm.ddq_command)
-                command_msg.twist.data.extend(robot.body_vel_command + robot.arm.dq_command)
-                robot.publish_robot_path()
+        # for k, robot in enumerate(self.robots):
+        #     state = robot.get_state()
+        #     if state['status'] == 'active':
+        #         command_msg.acceleration.data.extend(robot.body_acc_command + robot.arm.ddq_command)
+        #         command_msg.twist.data.extend(robot.body_vel_command + robot.arm.dq_command)
+        #         robot.publish_robot_path()
 
-                if self.execute_plan and (k == self.selected_robot_index) and (self.last_vehicle_marker_pose is not None):
-                    planned = self.last_vehicle_marker_pose
-                    x_nwu = planned.position.x
-                    y_nwu = planned.position.y
-                    z_nwu = planned.position.z
-                    roll_nwu, pitch_nwu, yaw_nwu = robot.quaternion_to_euler(planned.orientation)
+        #         if self.execute_plan and (k == self.selected_robot_index) and (self.last_vehicle_marker_pose is not None):
+        #             planned = self.last_vehicle_marker_pose
+        #             x_nwu = planned.position.x
+        #             y_nwu = planned.position.y
+        #             z_nwu = planned.position.z
+        #             roll_nwu, pitch_nwu, yaw_nwu = robot.quaternion_to_euler(planned.orientation)
 
-                    x_ned = x_nwu
-                    y_ned = -y_nwu
-                    z_ned = -z_nwu
+        #             x_ned = x_nwu
+        #             y_ned = -y_nwu
+        #             z_ned = -z_nwu
 
-                    raw_roll_ned = roll_nwu
-                    raw_pitch_ned = -pitch_nwu
-                    raw_yaw_ned = -yaw_nwu
+        #             raw_roll_ned = roll_nwu
+        #             raw_pitch_ned = -pitch_nwu
+        #             raw_yaw_ned = -yaw_nwu
 
-                    curr_roll, curr_pitch, curr_yaw = state['pose'][3:6]
+        #             curr_roll, curr_pitch, curr_yaw = state['pose'][3:6]
 
-                    target_roll = robot.normalize_angle(raw_roll_ned, curr_roll)
-                    target_pitch = robot.normalize_angle(raw_pitch_ned, curr_pitch)
-                    target_yaw = robot.normalize_angle(raw_yaw_ned, curr_yaw)
+        #             target_roll = robot.normalize_angle(raw_roll_ned, curr_roll)
+        #             target_pitch = robot.normalize_angle(raw_pitch_ned, curr_pitch)
+        #             target_yaw = robot.normalize_angle(raw_yaw_ned, curr_yaw)
 
-                    robot.pose_command = [x_ned, y_ned, z_ned,target_roll, target_pitch, target_yaw]
-                    robot.arm.q_command = [self.q0_des, self.q1_des, self.q2_des, self.q3_des, self.q4_des]
+        #             robot.pose_command = [x_ned, y_ned, z_ned,target_roll, target_pitch, target_yaw]
+        #             robot.arm.q_command = [self.q0_des, self.q1_des, self.q2_des, self.q3_des, self.q4_des]
 
-                    self.execute_plan = robot.set_robot_command_status()
-                    command_msg.pose.data.extend(robot.pose_command + robot.arm.q_command)
+        #             self.execute_plan = robot.set_robot_command_status()
+        #             command_msg.pose.data.extend(robot.pose_command + robot.arm.q_command)
 
-                else:
-                    robot.pose_command = state['pose']
-                    robot.arm.q_command = state['q'] + [0.0]
-                    command_msg.pose.data.extend(robot.pose_command + robot.arm.q_command)
-            ref=robot.pose_command+robot.arm.q_command
-            robot.write_data_to_file(ref) 
+        #         else:
+        #             robot.pose_command = state['pose']
+        #             robot.arm.q_command = state['q'] + [0.0]
+        #             command_msg.pose.data.extend(robot.pose_command + robot.arm.q_command)
+        #     ref=robot.pose_command+robot.arm.q_command
+        #     robot.write_data_to_file(ref) 
 
-        self.uvms_publisher_.publish(command_msg)
+        # self.uvms_publisher_.publish(command_msg)
 
     def processFeedback(self, feedback):
         # For uv_marker
