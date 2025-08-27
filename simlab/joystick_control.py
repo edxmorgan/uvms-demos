@@ -63,7 +63,7 @@ class PS4TeleopNode(Node):
 
         # Setup a publisher with a QoS profile.
         qos_profile = QoSProfile(history=QoSHistoryPolicy.KEEP_LAST, depth=10)
-        self.publisher_ = self.create_publisher(Command, '/uvms_controller/uvms/commands', qos_profile)
+        # self.publisher_ = self.create_publisher(Command, '/uvms_controller/uvms/commands', qos_profile)
 
         # Create a timer callback to publish commands at 1000 Hz.
         frequency = 1000  # Hz

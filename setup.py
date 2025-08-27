@@ -35,11 +35,11 @@ setup(
     license='TODO: License declaration',
     entry_points={
         'console_scripts': [
+            'interactive_controller = simlab.interactive_control:main',
             'joystick_controller = simlab.joystick_control:main',
-            'coverage_node = simlab.dive_coverage:main',
-            'pwm_test_node = simlab.pwm_test:main',
-            'interactive_marker_node = simlab.interactive_marker_control:main',
-            'dof_controller = simlab.dof_control:main',
+            'motion_plan_controller = simlab.motion_plan_control:main',
+            'joint_controller = simlab.joint_control:main',
+            'direct_thruster_controller = simlab.direct_thruster_control:main',
         ],
     },
 )
