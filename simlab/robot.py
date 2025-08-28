@@ -34,7 +34,7 @@ import glob
 from typing import Sequence, Dict
 from control_msgs.msg import DynamicInterfaceGroupValues
 from std_msgs.msg import Float64MultiArray
-from uvms_simlab.simlab.controller_msg import FullRobotMsg
+from controller_msg import FullRobotMsg
 
 class PS4Controller(Controller):
     def __init__(self, ros_node, prefix, **kwargs):
@@ -591,17 +591,21 @@ class Robot(Base):
         self.mountPitch_publisher_ = self.node.create_publisher(Float32, '/alpha/cameraMountPitch', 10)
         self.light_publisher_ = self.node.create_publisher(Float32, '/alpha/lights', 10)
 
-        self.vehicle_command_publisher = self.node.create_publisher(
+        self.vehicle_effort_command_publisher = self.node.create_publisher(
             DynamicInterfaceGroupValues,
             f"vehicle_effort_controller_{prefix}/commands",
             qos_profile
         )
-        self.manipulator_command_publisher = self.node.create_publisher(
+        self.vehicle_pwm_command_publisher = self.node.create_publisher(
+            Float64MultiArray,
+            f'vehicle_thrusters_pwm_controller_{prefix}/commands',
+            qos_profile
+        )    
+        self.manipulator_effort_command_publisher = self.node.create_publisher(
             Float64MultiArray,
             f"manipulation_effort_controller_{prefix}/commands",
             qos_profile
-        )
-            
+        )        
         self.ref_acc = np.zeros(10)
         self.ref_vel = np.zeros(10)
         self.ref_pos = initial_pos
@@ -956,61 +960,61 @@ class Robot(Base):
 
 
     def initiaize_data_writer(self):
-            if self.record:
-                # Create a timestamp string
-                timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+        if self.record:
+            # Create a timestamp string
+            timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+            
+            # Create a folder with the timestamp as its name (in the current working directory)
+            folder_path = os.path.join(os.getcwd(), timestamp_str)
+            os.makedirs(folder_path, exist_ok=True)
+            
+            # Create a timestamped filename for the CSV
+            filename = f"{timestamp_str}_{self.prefix}.csv"
+            file_path = os.path.join(folder_path, filename)
+            
+            # Open the CSV file and prepare to write data
+            self.csv_file = open(file_path, 'w', newline='')
+            self.csv_writer = csv.writer(self.csv_file)
+
+            # Write a header row for clarity
+            columns = [
+                'timestamp',
+                'base_x_force', 'base_y_force', 'base_z_force', 'base_x_torque', 'base_y_torque', 'base_z_torque',
+                'base_x', 'base_y', 'base_z', 'base_roll', 'base_pitch', 'base_yaw',
+                'base_dx', 'base_dy', 'base_dz', 'base_vel_roll', 'base_vel_pitch', 'base_vel_yaw',
                 
-                # Create a folder with the timestamp as its name (in the current working directory)
-                folder_path = os.path.join(os.getcwd(), timestamp_str)
-                os.makedirs(folder_path, exist_ok=True)
-                
-                # Create a timestamped filename for the CSV
-                filename = f"{timestamp_str}_{self.prefix}.csv"
-                file_path = os.path.join(folder_path, filename)
-                
-                # Open the CSV file and prepare to write data
-                self.csv_file = open(file_path, 'w', newline='')
-                self.csv_writer = csv.writer(self.csv_file)
+                'effort_alpha_axis_e', 'effort_alpha_axis_d', 'effort_alpha_axis_c', 'effort_alpha_axis_b',
+                'q_alpha_axis_e', 'q_alpha_axis_d', 'q_alpha_axis_c', 'q_alpha_axis_b',
+                'dq_alpha_axis_e', 'dq_alpha_axis_d', 'dq_alpha_axis_c', 'dq_alpha_axis_b',
 
-                # Write a header row for clarity
-                columns = [
-                    'timestamp',
-                    'base_x_force', 'base_y_force', 'base_z_force', 'base_x_torque', 'base_y_torque', 'base_z_torque',
-                    'base_x', 'base_y', 'base_z', 'base_roll', 'base_pitch', 'base_yaw',
-                    'base_dx', 'base_dy', 'base_dz', 'base_vel_roll', 'base_vel_pitch', 'base_vel_yaw',
-                    
-                    'effort_alpha_axis_e', 'effort_alpha_axis_d', 'effort_alpha_axis_c', 'effort_alpha_axis_b',
-                    'q_alpha_axis_e', 'q_alpha_axis_d', 'q_alpha_axis_c', 'q_alpha_axis_b',
-                    'dq_alpha_axis_e', 'dq_alpha_axis_d', 'dq_alpha_axis_c', 'dq_alpha_axis_b',
+                'imu_roll', 'imu_pitch', 'imu_yaw',
+                'imu_roll_unwrap', 'imu_pitch_unwrap', 'imu_yaw_unwrap',
+                'imu_q_w', 'imu_q_x', 'imu_q_y', 'imu_q_z',
+                'imu_ang_vel_x', 'imu_ang_vel_y','imu_ang_vel_z',
+                'imu_linear_acc_x', 'imu_linear_acc_y','imu_linear_acc_z',
+                'depth_from_pressure2',
+                'dvl_roll', 'dvl_pitch', 'dvl_yaw',
+                'dvl_speed_x', 'dvl_speed_y', 'dvl_speed_z',
 
-                    'imu_roll', 'imu_pitch', 'imu_yaw',
-                    'imu_roll_unwrap', 'imu_pitch_unwrap', 'imu_yaw_unwrap',
-                    'imu_q_w', 'imu_q_x', 'imu_q_y', 'imu_q_z',
-                    'imu_ang_vel_x', 'imu_ang_vel_y','imu_ang_vel_z',
-                    'imu_linear_acc_x', 'imu_linear_acc_y','imu_linear_acc_z',
-                    'depth_from_pressure2',
-                    'dvl_roll', 'dvl_pitch', 'dvl_yaw',
-                    'dvl_speed_x', 'dvl_speed_y', 'dvl_speed_z',
+                'base_x_ref', 'base_y_ref', 'base_z_ref', 'base_roll_ref', 'base_pitch_ref', 'base_yaw_ref',
+                'q_alpha_axis_e_ref', 'q_alpha_axis_d_ref', 'q_alpha_axis_c_ref', 'q_alpha_axis_b_ref', 'q_alpha_axis_a_ref',
 
-                    'base_x_ref', 'base_y_ref', 'base_z_ref', 'base_roll_ref', 'base_pitch_ref', 'base_yaw_ref',
-                    'q_alpha_axis_e_ref', 'q_alpha_axis_d_ref', 'q_alpha_axis_c_ref', 'q_alpha_axis_b_ref', 'q_alpha_axis_a_ref',
+                "position.x", "position.y", "position.z", "roll", "pitch", "yaw",
+                "orientation.w", "orientation.x", "orientation.y", "orientation.z", 
+                "velocity.x", "velocity.y", "velocity.z", 
+                "angular_velocity.x", "angular_velocity.y", "angular_velocity.z",
 
-                    "position.x", "position.y", "position.z", "roll", "pitch", "yaw",
-                    "orientation.w", "orientation.x", "orientation.y", "orientation.z", 
-                    "velocity.x", "velocity.y", "velocity.z", 
-                    "angular_velocity.x", "angular_velocity.y", "angular_velocity.z",
+                "position_estimate.x", "position_estimate.y", "position_estimate.z",
+                "roll_estimate", "pitch_estimate", "yaw_estimate",
+                "orientation_estimate.w", "orientation_estimate.x", "orientation_estimate.y", "orientation_estimate.z",
+                "velocity_estimate.x", "velocity_estimate.y", "velocity_estimate.z",
+                "angular_velocity_estimate.x", "angular_velocity_estimate.y", "angular_velocity_estimate.z",
+                "P_x_x", "P_y_y", "P_z_z", "P_roll_roll", "P_pitch_pitch", "P_yaw_yaw",
+                "P_u_u", "P_v_v", "P_w_w", "P_p_p", "P_q_q", "P_r_r",
 
-                    "position_estimate.x", "position_estimate.y", "position_estimate.z",
-                    "roll_estimate", "pitch_estimate", "yaw_estimate",
-                    "orientation_estimate.w", "orientation_estimate.x", "orientation_estimate.y", "orientation_estimate.z",
-                    "velocity_estimate.x", "velocity_estimate.y", "velocity_estimate.z",
-                    "angular_velocity_estimate.x", "angular_velocity_estimate.y", "angular_velocity_estimate.z",
-                    "P_x_x", "P_y_y", "P_z_z", "P_roll_roll", "P_pitch_pitch", "P_yaw_yaw",
-                    "P_u_u", "P_v_v", "P_w_w", "P_p_p", "P_q_q", "P_r_r",
-
-                    "payload.mass", "payload.Ixx", "payload.Iyy", "payload.Izz"
-                ]
-                self.csv_writer.writerow(columns)
+                "payload.mass", "payload.Ixx", "payload.Iyy", "payload.Izz"
+            ]
+            self.csv_writer.writerow(columns)
     
     def write_data_to_file(self, ref=[0,0,0, 0,0,0, 0,0,0,0, 0]):
         if self.record:
@@ -1040,7 +1044,6 @@ class Robot(Base):
             self.csv_writer.writerow(row_data)
             self.csv_file.flush()
 
-
     def publish_vehicle_and_arm(
         self,
         wrench_body_6: Sequence[float],
@@ -1053,8 +1056,8 @@ class Robot(Base):
         veh_msg = container.to_vehicle_dynamic_group(self.node.get_clock().now().to_msg())
         arm_msg = container.to_arm_effort_array()
 
-        self.vehicle_command_publisher.publish(veh_msg)
-        self.manipulator_command_publisher.publish(arm_msg)
+        self.vehicle_effort_command_publisher.publish(veh_msg)
+        self.manipulator_effort_command_publisher.publish(arm_msg)
     
     # ForwardCommandController
     def publish_commands(self, wrench_body_6: Sequence[float], arm_effort_5: Sequence[float]):

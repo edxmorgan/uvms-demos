@@ -93,15 +93,12 @@ class PS4TeleopNode(Node):
             robot.write_data_to_file()
             robot.publish_robot_path()
 
-
     def destroy_node(self):
-        # Optionally, stop the PS4 controller listener here if needed.
+        for robot in self.robots:
+            if robot.record:
+                robot.close_csv()
         super().destroy_node()
 
-
-###############################################################################
-# Main entry point.
-###############################################################################
 def main(args=None):
     rclpy.init(args=args)
     teleop_node = PS4TeleopNode()

@@ -40,15 +40,8 @@ class CoverageTask(Node):
         self.get_logger().info(f"robots total number of commands : {self.total_no_efforts}")
         
         initial_pos = np.array([0.0, 0.0, 8.0, 0,0,0, 3.1, 0.7, 0.4, 2.1])
-
-
-        self.robots_and_tasks = [(Robot(self, k, 4, prefix, initial_pos, self.record, controller), Task(initial_pos)) for k, (prefix, controller) in enumerate(list(zip(self.robots_prefix, self.controllers)))]
-        qos_profile = QoSProfile(
-            history=QoSHistoryPolicy.KEEP_LAST,
-            depth=10
-        )
-
-        # self.uvms_publisher_ = self.create_publisher(Command, '/uvms_controller/uvms/commands', qos_profile)
+        self.robots_and_tasks = [(Robot(self, k, 4, prefix, initial_pos, self.record, controller),
+                                   Task(initial_pos)) for k, (prefix, controller) in enumerate(list(zip(self.robots_prefix, self.controllers)))]
 
         frequency = 150  # Hz
         self.timer = self.create_timer(1.0 / frequency, self.timer_callback)
