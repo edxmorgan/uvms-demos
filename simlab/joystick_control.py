@@ -17,13 +17,7 @@
 import rclpy
 from rclpy.node import Node
 import numpy as np
-from rclpy.qos import QoSProfile, QoSHistoryPolicy
-from std_msgs.msg import Float64MultiArray
-from control_msgs.msg import DynamicInterfaceGroupValues
-from control_msgs.msg import DynamicInterfaceGroupValues, InterfaceValue
 from robot import Robot
-from std_msgs.msg import Header
-
 
 ###############################################################################
 # ROS2 Node that uses the PS4 controller for ROV teleoperation.
@@ -61,58 +55,16 @@ class PS4TeleopNode(Node):
         # Initialize robots (make sure your Robot class is defined properly).
         initial_pos = np.array([0.0, 0.0, 0.0, 0, 0, 0, 3.1, 0.7, 0.4, 2.1])
 
-        # Setup a publisher with a QoS profile.
-        qos_profile = QoSProfile(history=QoSHistoryPolicy.KEEP_LAST, depth=10)
         self.robots = []
         for k, (prefix, controller) in enumerate(list(zip(self.robots_prefix, self.controllers))):
-            vehicle_command_publisher_k = self.create_publisher(
-                DynamicInterfaceGroupValues,
-                f"vehicle_effort_controller_{prefix}/commands",
-                qos_profile
-            )
-            manipulator_command_publisher_k = self.create_publisher(
-                Float64MultiArray,
-                f"manipulation_effort_controller_{prefix}/commands",
-                qos_profile
-            )
-            robot_k = Robot(self, k, 4, prefix, initial_pos, self.record, controller, vehicle_command_publisher_k, manipulator_command_publisher_k)
+            robot_k = Robot(self, k, 4, prefix, initial_pos, self.record, controller)
             self.robots.append(robot_k)
 
         # Create a timer callback to publish commands at 1000 Hz.
         frequency = 1000  # Hz
-        self.timer = self.create_timer(1.0 / frequency, self.timer_callback)
-
-    def build_vehicle_message(self, robot, surge, sway, heave, roll, pitch, yaw):
-        """
-        Build DynamicInterfaceGroupValues for the GPIO group, order must match controller config.
-        """
-        msg = DynamicInterfaceGroupValues()
-
-        # Fill header
-        msg.header = Header()
-        msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = f"{robot.prefix}map"
-
-        # The group name must match your GPIO name in URDF, <gpio name="${prefix}IOs">
-        gpio_group = f"{robot.prefix}IOs"
-        msg.interface_groups = [gpio_group]
-
-        iv = InterfaceValue()
-        iv.interface_names = [
-            "force.x", "force.y", "force.z",
-            "torque.x", "torque.y", "torque.z",
-        ]
-        iv.values = [
-            float(surge), float(sway), float(heave),
-            float(roll), float(pitch), float(yaw),
-        ]
-        msg.interface_values = [iv]
-        return msg
-    
+        self.timer = self.create_timer(1.0 / frequency, self.timer_callback)    
 
     def timer_callback(self):
-        # Create a new command message.
-        # Build the full command list for all robots.
         for robot in self.robots:
             robot.publish_robot_path()
             robot.publish_gt_path()
@@ -134,23 +86,10 @@ class PS4TeleopNode(Node):
                     c_joint= robot.jointc
                     b_joint= robot.jointb
                     a_joint= robot.jointa
+            wrench_body_6 = [surge, sway, heave, roll, pitch, yaw]
+            arm_effort_5 = [e_joint, d_joint, c_joint, b_joint, a_joint]
 
-            # Vehicle, DynamicInterfaceGroupValues payload
-            vehicle_msg = self.build_vehicle_message(
-                robot, surge, sway, heave, roll, pitch, yaw
-            )
-
-            # Manipulator, Float64MultiArray to ForwardCommandController
-            manipulator_msg = Float64MultiArray()
-            manipulator_msg.data = [
-                float(e_joint), float(d_joint), float(c_joint),
-                float(b_joint), float(a_joint)
-            ]
-
-            # Publish
-            robot.vehicle_command_publisher.publish(vehicle_msg)
-            robot.manipulator_command_publisher.publish(manipulator_msg)
-
+            robot.publish_commands(wrench_body_6, arm_effort_5)
             robot.write_data_to_file()
             robot.publish_robot_path()
 

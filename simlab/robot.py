@@ -31,7 +31,10 @@ from std_msgs.msg import Float32
 from pyPS4Controller.controller import Controller
 import threading
 import glob
-
+from typing import Sequence, Dict
+from control_msgs.msg import DynamicInterfaceGroupValues
+from std_msgs.msg import Float64MultiArray
+from uvms_simlab.simlab.controller_msg import FullRobotMsg
 
 class PS4Controller(Controller):
     def __init__(self, ros_node, prefix, **kwargs):
@@ -480,9 +483,7 @@ class Robot(Base):
                   prefix, 
                   initial_pos, 
                   record=False,  
-                  controller='pid', 
-                  vehicle_command_publisher=None,
-                  manipulator_command_publisher=None):
+                  controller='pid'):
         self.subscription = node.create_subscription(
                 DynamicJointState,
                 'dynamic_joint_states',
@@ -502,8 +503,6 @@ class Robot(Base):
         self.vehicle_J = ca.Function.load(vehicle_J_path)
 
         self.node = node
-        self.vehicle_command_publisher=vehicle_command_publisher
-        self.manipulator_command_publisher=manipulator_command_publisher
         self.sensors = [
             Axis_Interface_names.imu_roll,
             Axis_Interface_names.imu_pitch,
@@ -592,6 +591,17 @@ class Robot(Base):
         self.mountPitch_publisher_ = self.node.create_publisher(Float32, '/alpha/cameraMountPitch', 10)
         self.light_publisher_ = self.node.create_publisher(Float32, '/alpha/lights', 10)
 
+        self.vehicle_command_publisher = self.node.create_publisher(
+            DynamicInterfaceGroupValues,
+            f"vehicle_effort_controller_{prefix}/commands",
+            qos_profile
+        )
+        self.manipulator_command_publisher = self.node.create_publisher(
+            Float64MultiArray,
+            f"manipulation_effort_controller_{prefix}/commands",
+            qos_profile
+        )
+            
         self.ref_acc = np.zeros(10)
         self.ref_vel = np.zeros(10)
         self.ref_pos = initial_pos
@@ -1029,6 +1039,27 @@ class Robot(Base):
             """Write a single row of data to the CSV file."""
             self.csv_writer.writerow(row_data)
             self.csv_file.flush()
+
+
+    def publish_vehicle_and_arm(
+        self,
+        wrench_body_6: Sequence[float],
+        arm_effort_5: Sequence[float],
+    ) -> None:
+        container = FullRobotMsg(prefix=self.prefix)
+        container.set_vehicle_wrench(wrench_body_6)
+        container.set_arm_effort(arm_effort_5)
+
+        veh_msg = container.to_vehicle_dynamic_group(self.node.get_clock().now().to_msg())
+        arm_msg = container.to_arm_effort_array()
+
+        self.vehicle_command_publisher.publish(veh_msg)
+        self.manipulator_command_publisher.publish(arm_msg)
+    
+    # ForwardCommandController
+    def publish_commands(self, wrench_body_6: Sequence[float], arm_effort_5: Sequence[float]):
+        # Vehicle, DynamicInterfaceGroupValues payload
+        self.publish_vehicle_and_arm(wrench_body_6, arm_effort_5)
 
     def close_csv(self):
         # Close the CSV file when the node is destroyed

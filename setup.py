@@ -24,7 +24,8 @@ setup(
         ('lib/' + package_name, [package_name+'/robot.py']),
         ('lib/' + package_name, [package_name+'/blue_rov.py']),
         ('lib/' + package_name, [package_name+'/alpha_reach.py']),
-        ('lib/' + package_name, [package_name+'/task.py'])
+        ('lib/' + package_name, [package_name+'/task.py']),
+        ('lib/' + package_name, [package_name+'/controller_msg.py'])
     ],
 
     install_requires=['setuptools'],
