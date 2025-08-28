@@ -17,12 +17,12 @@
 import rclpy
 from rclpy.node import Node
 import numpy as np
-
-# Import ROS2 QoS settings and message type.
 from rclpy.qos import QoSProfile, QoSHistoryPolicy
-
-# Import your robot class
+from std_msgs.msg import Float64MultiArray
+from control_msgs.msg import DynamicInterfaceGroupValues
+from control_msgs.msg import DynamicInterfaceGroupValues, InterfaceValue
 from robot import Robot
+from std_msgs.msg import Header
 
 
 ###############################################################################
@@ -52,6 +52,7 @@ class PS4TeleopNode(Node):
         self.no_efforts = self.get_parameter('no_efforts').value
         self.robots_prefix = self.get_parameter('robots_prefix').value
         self.record = self.get_parameter('record_data').value
+        self.controllers = self.get_parameter('controllers').value
 
         self.get_logger().info(f"Robot prefixes found: {self.robots_prefix}")
         self.total_no_efforts = self.no_robot * self.no_efforts
@@ -59,58 +60,100 @@ class PS4TeleopNode(Node):
 
         # Initialize robots (make sure your Robot class is defined properly).
         initial_pos = np.array([0.0, 0.0, 0.0, 0, 0, 0, 3.1, 0.7, 0.4, 2.1])
-        self.robots = [Robot(self, k, 4, prefix, initial_pos, self.record) for k, prefix in enumerate(self.robots_prefix)]
 
         # Setup a publisher with a QoS profile.
         qos_profile = QoSProfile(history=QoSHistoryPolicy.KEEP_LAST, depth=10)
-        # self.publisher_ = self.create_publisher(Command, '/uvms_controller/uvms/commands', qos_profile)
+        self.robots = []
+        for k, (prefix, controller) in enumerate(list(zip(self.robots_prefix, self.controllers))):
+            vehicle_command_publisher_k = self.create_publisher(
+                DynamicInterfaceGroupValues,
+                f"vehicle_effort_controller_{prefix}/commands",
+                qos_profile
+            )
+            manipulator_command_publisher_k = self.create_publisher(
+                Float64MultiArray,
+                f"manipulation_effort_controller_{prefix}/commands",
+                qos_profile
+            )
+            robot_k = Robot(self, k, 4, prefix, initial_pos, self.record, controller, vehicle_command_publisher_k, manipulator_command_publisher_k)
+            self.robots.append(robot_k)
 
         # Create a timer callback to publish commands at 1000 Hz.
         frequency = 1000  # Hz
         self.timer = self.create_timer(1.0 / frequency, self.timer_callback)
 
+    def build_vehicle_message(self, robot, surge, sway, heave, roll, pitch, yaw):
+        """
+        Build DynamicInterfaceGroupValues for the GPIO group, order must match controller config.
+        """
+        msg = DynamicInterfaceGroupValues()
+
+        # Fill header
+        msg.header = Header()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = f"{robot.prefix}map"
+
+        # The group name must match your GPIO name in URDF, <gpio name="${prefix}IOs">
+        gpio_group = f"{robot.prefix}IOs"
+        msg.interface_groups = [gpio_group]
+
+        iv = InterfaceValue()
+        iv.interface_names = [
+            "force.x", "force.y", "force.z",
+            "torque.x", "torque.y", "torque.z",
+        ]
+        iv.values = [
+            float(surge), float(sway), float(heave),
+            float(roll), float(pitch), float(yaw),
+        ]
+        msg.interface_values = [iv]
+        return msg
+    
 
     def timer_callback(self):
-        pass
-        # # Create a new command message.
-        # command_msg = Command()
-        # command_msg.command_type = ["force"]*self.no_robot
-       
-        # # Build the full command list for all robots.
-        # data = []
-        # for robot in self.robots:
-        #     robot.publish_robot_path()
-        #     robot.publish_gt_path()
-        #     [surge, sway, heave, roll, pitch, yaw] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        #     [e_joint, d_joint, c_joint, b_joint, a_joint] = [0.0, 0.0, 0.0, 0.0, 0.0]
+        # Create a new command message.
+        # Build the full command list for all robots.
+        for robot in self.robots:
+            robot.publish_robot_path()
+            robot.publish_gt_path()
+            [surge, sway, heave, roll, pitch, yaw] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            [e_joint, d_joint, c_joint, b_joint, a_joint] = [0.0, 0.0, 0.0, 0.0, 0.0]
 
-        #     if robot.has_joystick_interface:
-        #         # Safely acquire the latest controller values.
-        #         with robot.controller_lock:
-        #             surge = robot.rov_surge
-        #             sway = robot.rov_sway
-        #             heave = robot.rov_z
-        #             roll = robot.rov_roll
-        #             pitch = robot.rov_pitch
-        #             yaw = robot.rov_yaw
+            if robot.has_joystick_interface:
+                # Safely acquire the latest controller values.
+                with robot.controller_lock:
+                    surge = robot.rov_surge
+                    sway = robot.rov_sway
+                    heave = robot.rov_z
+                    roll = robot.rov_roll
+                    pitch = robot.rov_pitch
+                    yaw = robot.rov_yaw
 
-        #             e_joint= robot.jointe
-        #             d_joint= robot.jointd
-        #             c_joint= robot.jointc
-        #             b_joint= robot.jointb
-        #             a_joint= robot.jointa
+                    e_joint= robot.jointe
+                    d_joint= robot.jointd
+                    c_joint= robot.jointc
+                    b_joint= robot.jointb
+                    a_joint= robot.jointa
 
+            # Vehicle, DynamicInterfaceGroupValues payload
+            vehicle_msg = self.build_vehicle_message(
+                robot, surge, sway, heave, roll, pitch, yaw
+            )
 
-        #     rov_command = [surge, sway, heave, roll, pitch, yaw]
-        #     manipulator_command = [e_joint, d_joint, c_joint, b_joint, a_joint] #[0]*5 # Manipulator command (unused).
+            # Manipulator, Float64MultiArray to ForwardCommandController
+            manipulator_msg = Float64MultiArray()
+            manipulator_msg.data = [
+                float(e_joint), float(d_joint), float(c_joint),
+                float(b_joint), float(a_joint)
+            ]
 
-        #     robot.write_data_to_file()
-        #     # robot.publish_robot_path()  # Assumes each Robot instance handles its own publishing.
-        #     data.extend(rov_command + manipulator_command)
+            # Publish
+            robot.vehicle_command_publisher.publish(vehicle_msg)
+            robot.manipulator_command_publisher.publish(manipulator_msg)
 
-        # command_msg.force.data = [float(value) for value in data]
-        # # Publish the command.
-        # self.publisher_.publish(command_msg)
+            robot.write_data_to_file()
+            robot.publish_robot_path()
+
 
     def destroy_node(self):
         # Optionally, stop the PS4 controller listener here if needed.

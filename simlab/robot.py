@@ -474,7 +474,15 @@ class Manipulator(Base):
 
 
 class Robot(Base):
-    def __init__(self, node: Node, k_robot, n_joint, prefix, initial_pos, record=False,  controller='pid'):
+    def __init__(self, node: Node,
+                  k_robot, 
+                  n_joint, 
+                  prefix, 
+                  initial_pos, 
+                  record=False,  
+                  controller='pid', 
+                  vehicle_command_publisher=None,
+                  manipulator_command_publisher=None):
         self.subscription = node.create_subscription(
                 DynamicJointState,
                 'dynamic_joint_states',
@@ -494,7 +502,8 @@ class Robot(Base):
         self.vehicle_J = ca.Function.load(vehicle_J_path)
 
         self.node = node
-
+        self.vehicle_command_publisher=vehicle_command_publisher
+        self.manipulator_command_publisher=manipulator_command_publisher
         self.sensors = [
             Axis_Interface_names.imu_roll,
             Axis_Interface_names.imu_pitch,

@@ -40,7 +40,7 @@ from scipy.spatial import ConvexHull
 from blue_rov import Params as blue
 from alpha_reach import Params as alpha
 from tf_transformations import quaternion_matrix, quaternion_from_matrix
-
+from std_msgs.msg import Float64MultiArray
 
 class BasicControlsNode(Node):
     def __init__(self):
@@ -64,10 +64,8 @@ class BasicControlsNode(Node):
         self.total_no_efforts = self.no_robot * self.no_efforts
 
         qos_profile = QoSProfile(history=QoSHistoryPolicy.KEEP_LAST, depth=10)
-        # self.uvms_publisher_ = self.create_publisher(Command, '/uvms_controller/uvms/commands', qos_profile)
-
-        self.taskspace_pc_publisher_ = self.create_publisher(PointCloud2, 'workspace_pointcloud', 10)
-        self.rov_pc_publisher_ = self.create_publisher(PointCloud2, 'base_pointcloud', 10)
+        self.taskspace_pc_publisher_ = self.create_publisher(PointCloud2, 'workspace_pointcloud', qos_profile)
+        self.rov_pc_publisher_ = self.create_publisher(PointCloud2, 'base_pointcloud', qos_profile)
 
         workspace_pts_path = os.path.join(package_share_directory, 'workspace.npy')
         self.workspace_pts = np.load(workspace_pts_path)
@@ -80,9 +78,24 @@ class BasicControlsNode(Node):
         frequency = 500  # Hz
         self.timer = self.create_timer(1.0 / frequency, self.timer_callback)
 
+
         initial_pos = np.array([0.0, 0.0, 0.0, 0, 0, 0, 3.1, 0.7, 0.4, 2.1])
-        self.robots = [Robot(self, k, 4, prefix, initial_pos, self.record)
-                       for k, prefix in enumerate(self.robots_prefix)]
+        self.robots = []
+        # Create a publisher for the commands.
+        for k, (prefix, controller) in enumerate(list(zip(self.robots_prefix, self.controllers))):
+            vehicle_command_publisher_k = self.create_publisher(
+                Float64MultiArray,
+                f"vehicle_effort_controller_{prefix}/commands",
+                qos_profile
+            )
+            manipulator_command_publisher_k = self.create_publisher(
+                Float64MultiArray,
+                f"manipulation_effort_controller_{prefix}/commands",
+                qos_profile
+            )
+            robot_k = Robot(self, k, 4, prefix, initial_pos, self.record, controller, vehicle_command_publisher_k, manipulator_command_publisher_k)
+            self.robots.append(robot_k)
+            
 
         self.last_vehicle_marker_pose = Pose()
         self.last_vehicle_marker_pose.orientation.w = 1.0
