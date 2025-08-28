@@ -83,17 +83,7 @@ class BasicControlsNode(Node):
         self.robots = []
         # Create a publisher for the commands.
         for k, (prefix, controller) in enumerate(list(zip(self.robots_prefix, self.controllers))):
-            vehicle_command_publisher_k = self.create_publisher(
-                Float64MultiArray,
-                f"vehicle_effort_controller_{prefix}/commands",
-                qos_profile
-            )
-            manipulator_command_publisher_k = self.create_publisher(
-                Float64MultiArray,
-                f"manipulation_effort_controller_{prefix}/commands",
-                qos_profile
-            )
-            robot_k = Robot(self, k, 4, prefix, initial_pos, self.record, controller, vehicle_command_publisher_k, manipulator_command_publisher_k)
+            robot_k = Robot(self, k, 4, prefix, initial_pos, self.record, controller)
             self.robots.append(robot_k)
             
 
