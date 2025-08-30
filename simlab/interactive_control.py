@@ -430,7 +430,7 @@ class BasicControlsNode(Node):
     def is_point_valid(self, point):
         """
         Returns True if 'point' is in the workspace hull but *not* in the vehicle hull.
-        Equivalently, we want:  point ∈ (Workspace \ Vehicle) = Workspace ∩ (Vehicle)^c
+        Equivalently, we want:  point ∈ (Workspace \\ Vehicle) = Workspace ∩ (Vehicle)^c
         """
         inside_workspace = np.all(
             np.dot(self.workspace_hull.equations[:, :-1], point) + self.workspace_hull.equations[:, -1] <= 0
