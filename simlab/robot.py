@@ -208,14 +208,14 @@ class PS4Controller(Controller):
     # —— D‑pad Up/Down ——    
     def on_up_arrow_press(self):
         if self.options_mode:
-            self.ros_node.mountPitch_publisher_.publish(Float32(data=10.0))
+            self.ros_node.mountPitch_publisher_.publish(Float32(data=-10.0))
         else:
             with self.ros_node.controller_lock:
                 self.ros_node.jointd = 2.0
 
     def on_down_arrow_press(self):
         if self.options_mode:
-            self.ros_node.mountPitch_publisher_.publish(Float32(data=-10.0))
+            self.ros_node.mountPitch_publisher_.publish(Float32(data=10.0))
         else:
             with self.ros_node.controller_lock:
                 self.ros_node.jointd = -2.0
@@ -1063,6 +1063,13 @@ class Robot(Base):
     def publish_commands(self, wrench_body_6: Sequence[float], arm_effort_5: Sequence[float]):
         # Vehicle, DynamicInterfaceGroupValues payload
         self.publish_vehicle_and_arm(wrench_body_6, arm_effort_5)
+
+    def publish_vehicle_pwms(self,
+                             pwm_thruster_8: Sequence[float]):
+        container = FullRobotMsg(prefix=self.prefix)
+        container.set_vehicle_pwm(pwm_thruster_8)
+        vehicle_pwm = container.to_vehicle_pwm()
+        self.vehicle_pwm_command_publisher.publish(vehicle_pwm)
 
     def close_csv(self):
         # Close the CSV file when the node is destroyed

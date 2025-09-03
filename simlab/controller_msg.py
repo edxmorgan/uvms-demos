@@ -31,6 +31,7 @@ class SixDofState:
     pose: np.ndarray = field(default_factory=lambda: np.zeros(6, dtype=float))
     twist: np.ndarray = field(default_factory=lambda: np.zeros(6, dtype=float))
     wrench: np.ndarray = field(default_factory=lambda: np.zeros(6, dtype=float))
+    pwm: np.ndarray = field(default_factory=lambda: np.zeros(8, dtype=float))
 
 @dataclass
 class ArmState:
@@ -70,6 +71,12 @@ class FullRobotMsg:
         msg.interface_values = [iv]
         return msg
 
+    def to_vehicle_pwm(self) -> Float64MultiArray:
+        """Vehicle pwm message in your expected order [0, 1, 2, 3, 4, 5, 6, 7]."""
+        msg = Float64MultiArray()
+        msg.data = self.vehicle.pwm.astype(float).tolist()
+        return msg
+
     def to_arm_effort_array(self) -> Float64MultiArray:
         """Manipulator effort message in your expected order [e, d, c, b, a]."""
         msg = Float64MultiArray()
@@ -88,3 +95,6 @@ class FullRobotMsg:
 
     def set_arm_effort(self, effort_5: Sequence[float]) -> None:
         self.arm.effort = np.asarray(effort_5, dtype=float).reshape(5)
+
+    def set_vehicle_pwm(self, pwm_8: Sequence[float]) -> None:
+        self.vehicle.pwm = np.asarray(pwm_8, dtype=float).reshape(8)

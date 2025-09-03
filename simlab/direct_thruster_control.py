@@ -32,12 +32,11 @@ Mapping:
 Neutral value: 1500.0
 Active value:  1600.0
 """
-
+import numpy as np
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float64MultiArray
 from pynput import keyboard  # pip install pynput
-
+from robot import Robot
 # Mapping from key characters to channel indices
 KEY_TO_CHANNEL = {
     'u': 0,
@@ -55,14 +54,27 @@ ACTIVE_VALUE = 1700.0
 
 class KeyMappingNeutralPublisher(Node):
     def __init__(self):
-        super().__init__('key_mapping_neutral_publisher')
+        super().__init__('key_mapping_neutral_publisher',
+                         automatically_declare_parameters_from_overrides=True)
 
-        # Create a publisher for the commands.
-        self.publisher_ = self.create_publisher(
-            Float64MultiArray,
-            '/forward_pwm_controller/commands',
-            10
-        )
+        # Retrieve parameters (e.g. number of robots, efforts, and robot prefixes).
+        self.no_robot = self.get_parameter('no_robot').value
+        self.no_efforts = self.get_parameter('no_efforts').value
+        self.robots_prefix = self.get_parameter('robots_prefix').value
+        self.record = self.get_parameter('record_data').value
+        self.controllers = self.get_parameter('controllers').value
+
+        self.get_logger().info(f"Robot prefixes found: {self.robots_prefix}")
+        self.total_no_efforts = self.no_robot * self.no_efforts
+        self.get_logger().info(f"Total number of commands: {self.total_no_efforts}")
+
+        # Initialize robots (make sure your Robot class is defined properly).
+        initial_pos = np.array([0.0, 0.0, 0.0, 0, 0, 0, 3.1, 0.7, 0.4, 2.1])
+
+        self.robots = []
+        for k, (prefix, controller) in enumerate(list(zip(self.robots_prefix, self.controllers))):
+            robot_k = Robot(self, k, 4, prefix, initial_pos, self.record, controller)
+            self.robots.append(robot_k)  
 
         # Define the base neutral command message.
         self.neutral_msg = [NEUTRAL_VALUE] * 8
@@ -70,9 +82,9 @@ class KeyMappingNeutralPublisher(Node):
         # Maintain the state of each key (True if pressed, False otherwise).
         self.active_keys = {key: False for key in KEY_TO_CHANNEL.keys()}
 
-        # Set up a timer to publish the command message at 10 Hz.
-        timer_period = 1/150  # seconds
-        self.timer = self.create_timer(timer_period, self.timer_callback)
+      # Create a timer callback to publish commands at 1000 Hz.
+        frequency = 1000  # Hz
+        self.timer = self.create_timer(1.0 / frequency, self.timer_callback)    
         self.get_logger().info('Key Mapping Neutral Publisher Node has started.')
 
         # Start the keyboard listener in a separate thread.
@@ -88,20 +100,18 @@ class KeyMappingNeutralPublisher(Node):
         Each channel is set to ACTIVE_VALUE if its corresponding key is pressed,
         otherwise it is NEUTRAL_VALUE.
         """
-        # Start with a neutral command.
-        current_cmd = self.neutral_msg.copy()
+        for robot in self.robots:
+            # Start with a neutral command.
+            current_cmd = self.neutral_msg.copy()
 
-        # Modify channels based on which keys are active.
-        for key, is_active in self.active_keys.items():
-            if is_active:
-                channel = KEY_TO_CHANNEL[key]
-                current_cmd[channel] = ACTIVE_VALUE
+            # Modify channels based on which keys are active.
+            for key, is_active in self.active_keys.items():
+                if is_active:
+                    # self.get_logger().info(f'Key Mapping Neutral Publisher Node has started.{ACTIVE_VALUE}')
+                    channel = KEY_TO_CHANNEL[key]
+                    current_cmd[channel] = ACTIVE_VALUE
 
-        # Publish the command.
-        msg = Float64MultiArray()
-        msg.data = current_cmd
-        self.publisher_.publish(msg)
-        self.get_logger().debug(f'Published command: {msg.data}')
+            robot.publish_vehicle_pwms(current_cmd)
 
     def on_press(self, key):
         """
