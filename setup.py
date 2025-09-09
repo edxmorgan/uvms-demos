@@ -41,6 +41,7 @@ setup(
             'motion_plan_controller = simlab.motion_plan_control:main',
             'joint_controller = simlab.joint_control:main',
             'direct_thruster_controller = simlab.direct_thruster_control:main',
+            'cloudpoint_publisher = simlab.cloudpoint:main',
         ],
     },
 )
