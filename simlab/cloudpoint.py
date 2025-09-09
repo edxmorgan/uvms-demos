@@ -22,7 +22,7 @@ class MidasRGBToCloudFast(Node):
         self.declare_parameter('hfov_deg', 80.0)
         self.declare_parameter('vfov_deg', 64.0)
         self.declare_parameter('stride', 2)
-        self.declare_parameter('model_type', 'MiDaS_small')  # MiDaS_small, DPT_Hybrid, DPT_Large
+        self.declare_parameter('model_type', 'DPT_Large')  # MiDaS_small, DPT_Hybrid, DPT_Large
         self.declare_parameter('median_depth_m', 2.0)
         self.declare_parameter('min_depth_m', 0.3)
         self.declare_parameter('max_depth_m', 10.0)
@@ -48,6 +48,8 @@ class MidasRGBToCloudFast(Node):
         # MiDaS
         self.model_type = p('model_type').get_parameter_value().string_value
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.get_logger().info(f'\033[35mTorch device : {self.device}\033[0m')
+
         torch.set_grad_enabled(False)
         if self.device.type == 'cuda':
             torch.backends.cudnn.benchmark = True
