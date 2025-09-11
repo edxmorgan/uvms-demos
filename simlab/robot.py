@@ -481,7 +481,7 @@ class Robot(Base):
                   k_robot, 
                   n_joint, 
                   prefix, 
-                  initial_pos, 
+                  initial_ref_pos, 
                   record=False,  
                   controller='pid'):
         self.subscription = node.create_subscription(
@@ -608,7 +608,7 @@ class Robot(Base):
         )        
         self.ref_acc = np.zeros(10)
         self.ref_vel = np.zeros(10)
-        self.ref_pos = initial_pos
+        self.ref_pos = initial_ref_pos
 
        # Initialize path poses
         self.path_poses = []
