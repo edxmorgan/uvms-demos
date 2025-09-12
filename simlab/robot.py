@@ -491,6 +491,7 @@ class Robot(Base):
                 10
             )
         self.k_robot = k_robot
+        self.robot_name = f'uvms {prefix}: {k_robot}'
         self.subscription  # prevent unused variable warning
     
         package_share_directory = ament_index_python.get_package_share_directory(
@@ -626,18 +627,19 @@ class Robot(Base):
 
         self.initiaize_data_writer()
 
+        self.node_name = node.get_name()
+        if self.node_name in ['joystick_controller']:
+            # Search for joystick device in /dev/input
+            device_interface = f"/dev/input/js{self.k_robot}"
+            self.has_joystick_interface = False
+            joystick_device = glob.glob(device_interface)
 
-        # Search for joystick device in /dev/input
-        device_interface = f"/dev/input/js{self.k_robot}"
-        self.has_joystick_interface = False
-        joystick_device = glob.glob(device_interface)
-
-        if device_interface in joystick_device:
-            self.node.get_logger().info(f"Found joystick device: {device_interface}")
-            self.start_joystick(device_interface)
-            self.has_joystick_interface = True
-        else:
-            self.node.get_logger().info(f"No joystick device found for robot {self.k_robot}.")
+            if device_interface in joystick_device:
+                self.node.get_logger().info(f"Found joystick device: {device_interface}")
+                self.start_joystick(device_interface)
+                self.has_joystick_interface = True
+            else:
+                self.node.get_logger().info(f"No joystick device found for robot {self.k_robot}.")
 
     def set_robot_command_status(self):
         state = self.get_state()

@@ -22,6 +22,7 @@ setup(
             glob('resource/vehicle/*')
         ),
         ('lib/' + package_name, [package_name+'/robot.py']),
+        ('lib/' + package_name, [package_name+'/estimate.py']),
         ('lib/' + package_name, [package_name+'/blue_rov.py']),
         ('lib/' + package_name, [package_name+'/alpha_reach.py']),
         ('lib/' + package_name, [package_name+'/task.py']),
@@ -42,6 +43,7 @@ setup(
             'joint_controller = simlab.joint_control:main',
             'direct_thruster_controller = simlab.direct_thruster_control:main',
             'cloudpoint_publisher = simlab.cloudpoint:main',
+            'estimator_publisher = simlab.estimator:main',
         ],
     },
 )
