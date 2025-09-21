@@ -13,6 +13,10 @@ class LowLevelController:
         self.uv_pid_controller = ca.Function.load(uv_pid_controller_path)
         self.vehicle_pid_i_buffer = np.zeros(6, dtype=float)  # 6 dof vehicle integral buffer
 
+        # Integral buffer hardening, clamp and leak
+        self.vehicle_i_limit = np.array([50, 50, 50, 50, 50, 50], dtype=float)  # per axis clamp
+        self.vehicle_i_leak_per_s = 0.1  # leak coefficient in 1 per second, set 0.0 to disable
+
         # Arm PID
         arm_pid_controller_path = os.path.join(package_share_directory, 'manipulator/arm_pid.casadi')
         self.arm_pid_controller = ca.Function.load(arm_pid_controller_path)
@@ -34,9 +38,16 @@ class LowLevelController:
         if target.size != 6:
             raise ValueError(f"target must have 6 elements, got {target.size}")
 
+        # Integral buffer hygiene, clamp and leak
         buf = np.asarray(self.vehicle_pid_i_buffer, dtype=float).reshape(-1)
         if buf.size != 6:
             buf = np.zeros(6, dtype=float)
+
+        leak = float(self.vehicle_i_leak_per_s)
+        if leak > 0.0 and dt > 0.0:
+            buf *= max(0.0, 1.0 - leak * float(dt))  # exponential-like decay
+
+        buf = np.clip(buf, -self.vehicle_i_limit, self.vehicle_i_limit)
 
         pid_control, i_buf_next = self.uv_pid_controller(
             blue.W,
@@ -52,7 +63,13 @@ class LowLevelController:
             float(dt),
         )
 
-        self.vehicle_pid_i_buffer = np.asarray(i_buf_next).reshape(-1)[:6]
+        # Update and clamp the returned integral buffer
+        self.vehicle_pid_i_buffer = np.clip(
+            np.asarray(i_buf_next).reshape(-1)[:6],
+            -self.vehicle_i_limit,
+            self.vehicle_i_limit,
+        )
+
         return np.asarray(pid_control).reshape(-1)
 
     def arm_controller(
