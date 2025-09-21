@@ -29,12 +29,12 @@ class Params:
     joint_limits = list(zip(joint_min.tolist(), joint_max.tolist()))
     joint_limits_configurations = np.array(list(itertools.product(*joint_limits)))
 
-    u_min = np.array([-1.4, -0.629139, -0.518764, -0.54])
-    u_max = np.array([1.4, 0.629139, 0.518764, 0.54])
+    u_min = np.array([-1.5, -1, -1, -0.54])
+    u_max = np.array([1.5, 1, 1, 0.54])
     
-    Kp = cs.vertcat(1.0, 1.0, 1.0, 1.0)
-    Ki = cs.vertcat(1e-3, 1e-3, 1e-3, 1e-3)
-    Kd = cs.vertcat(1e-3, 1e-3, 1e-3, 1e-3)
+    Kp = cs.vertcat(5.0, 5.0, 5.0, 5.0)
+    Ki = cs.vertcat(1, 1, 1, 1)
+    Kd = cs.vertcat(1, 1, 1, 1)
 
     # rho = 1 #kg/L
 

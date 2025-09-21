@@ -44,12 +44,7 @@ class Dof_Control_Node(Node):
         # Initialize robots (make sure your Robot class is defined properly).
         initial_pos = np.array([0.0, 0.0, 0.0, 0, 0, 0, 3.1, 0.7, 0.4, 2.1])
         self.robots = [Robot(self, k, 4, prefix, initial_pos, self.record) for k, prefix in enumerate(self.robots_prefix)]
-        qos_profile = QoSProfile(
-            history=QoSHistoryPolicy.KEEP_LAST,
-            depth=10
-        )
 
-        # self.uvms_publisher_ = self.create_publisher(Command, '/uvms_controller/uvms/commands', qos_profile)
         # Create a timer callback to publish commands at 1000 Hz.
         frequency = 1000  # Hz
         self.timer = self.create_timer(1.0 / frequency, self.timer_callback)

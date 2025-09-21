@@ -18,7 +18,6 @@ import numpy as np
 np.float = float  # Patch NumPy to satisfy tf_transformations' use of np.float
 
 import copy
-import math
 import rclpy
 from rclpy.node import Node
 from scipy.spatial.transform import Rotation as R
@@ -37,10 +36,8 @@ from sensor_msgs.msg import PointCloud2
 from std_msgs.msg import Header
 import sensor_msgs_py.point_cloud2 as pc2
 from scipy.spatial import ConvexHull
-from blue_rov import Params as blue
 from alpha_reach import Params as alpha
 from tf_transformations import quaternion_matrix, quaternion_from_matrix
-from std_msgs.msg import Float64MultiArray
 
 class BasicControlsNode(Node):
     def __init__(self):
@@ -67,7 +64,7 @@ class BasicControlsNode(Node):
         self.taskspace_pc_publisher_ = self.create_publisher(PointCloud2, 'workspace_pointcloud', qos_profile)
         self.rov_pc_publisher_ = self.create_publisher(PointCloud2, 'base_pointcloud', qos_profile)
 
-        workspace_pts_path = os.path.join(package_share_directory, 'workspace.npy')
+        workspace_pts_path = os.path.join(package_share_directory, 'manipulator/workspace.npy')
         self.workspace_pts = np.load(workspace_pts_path)
         self.workspace_hull = ConvexHull(self.workspace_pts)
 
@@ -141,7 +138,7 @@ class BasicControlsNode(Node):
 
         # Unpack the Euler angles from the returned array.
         roll, pitch, yaw = R.from_quat(desired_q_orientation).as_euler('xyz', degrees=False)
-        [self.q0_des, self.q1_des, self.q2_des, self.q3_des, self.q4_des] = self.robots[0].arm.q_command
+        [self.q0_des, self.q1_des, self.q2_des, self.q3_des] = self.robots[0].arm.q_command
         self.n_int_est = ca.DM([self.last_vehicle_marker_pose.position.x,
                       self.last_vehicle_marker_pose.position.y,
                       self.last_vehicle_marker_pose.position.z,
@@ -190,54 +187,77 @@ class BasicControlsNode(Node):
 
         self.broadcast_pose(self.last_vehicle_marker_pose, self.base_frame, self.vehicle_marker_frame)
 
-        # command_msg = Command()
-        # command_msg.command_type = self.controllers
-        # command_msg.acceleration.data = []
-        # command_msg.twist.data = []
-        # command_msg.pose.data = []
+        for k, robot in enumerate(self.robots):
+            state = robot.get_state()
+            if state['status'] == 'active':
+                desired_body_acc = robot.body_acc_command + robot.arm.ddq_command
+                desired_body_vel = robot.body_vel_command + robot.arm.dq_command
+                robot.publish_robot_path()
 
-        # for k, robot in enumerate(self.robots):
-        #     state = robot.get_state()
-        #     if state['status'] == 'active':
-        #         command_msg.acceleration.data.extend(robot.body_acc_command + robot.arm.ddq_command)
-        #         command_msg.twist.data.extend(robot.body_vel_command + robot.arm.dq_command)
-        #         robot.publish_robot_path()
+                if self.execute_plan and (k == self.selected_robot_index) and (self.last_vehicle_marker_pose is not None):
+                    planned = self.last_vehicle_marker_pose
+                    x_nwu = planned.position.x
+                    y_nwu = planned.position.y
+                    z_nwu = planned.position.z
+                    roll_nwu, pitch_nwu, yaw_nwu = robot.quaternion_to_euler(planned.orientation)
 
-        #         if self.execute_plan and (k == self.selected_robot_index) and (self.last_vehicle_marker_pose is not None):
-        #             planned = self.last_vehicle_marker_pose
-        #             x_nwu = planned.position.x
-        #             y_nwu = planned.position.y
-        #             z_nwu = planned.position.z
-        #             roll_nwu, pitch_nwu, yaw_nwu = robot.quaternion_to_euler(planned.orientation)
+                    x_ned = x_nwu
+                    y_ned = -y_nwu
+                    z_ned = -z_nwu
 
-        #             x_ned = x_nwu
-        #             y_ned = -y_nwu
-        #             z_ned = -z_nwu
+                    raw_roll_ned = roll_nwu
+                    raw_pitch_ned = -pitch_nwu
+                    raw_yaw_ned = -yaw_nwu
 
-        #             raw_roll_ned = roll_nwu
-        #             raw_pitch_ned = -pitch_nwu
-        #             raw_yaw_ned = -yaw_nwu
+                    curr_roll, curr_pitch, curr_yaw = state['pose'][3:6]
 
-        #             curr_roll, curr_pitch, curr_yaw = state['pose'][3:6]
+                    target_roll = robot.normalize_angle(raw_roll_ned, curr_roll)
+                    target_pitch = robot.normalize_angle(raw_pitch_ned, curr_pitch)
+                    target_yaw = robot.normalize_angle(raw_yaw_ned, curr_yaw)
 
-        #             target_roll = robot.normalize_angle(raw_roll_ned, curr_roll)
-        #             target_pitch = robot.normalize_angle(raw_pitch_ned, curr_pitch)
-        #             target_yaw = robot.normalize_angle(raw_yaw_ned, curr_yaw)
+                    robot.pose_command = [x_ned, y_ned, z_ned,target_roll, target_pitch, target_yaw]
+                    robot.arm.q_command = [self.q0_des, self.q1_des, self.q2_des, self.q3_des]
 
-        #             robot.pose_command = [x_ned, y_ned, z_ned,target_roll, target_pitch, target_yaw]
-        #             robot.arm.q_command = [self.q0_des, self.q1_des, self.q2_des, self.q3_des, self.q4_des]
+                    self.execute_plan = robot.set_robot_command_status()
+                else:
+                    robot.pose_command = state['pose']
+                    robot.arm.q_command = state['q']
+            
 
-        #             self.execute_plan = robot.set_robot_command_status()
-        #             command_msg.pose.data.extend(robot.pose_command + robot.arm.q_command)
+            veh_state_vec = np.array(
+                list(state['pose']) + list(state['body_vel']),
+                dtype=float
+            )
+            # log to terminal
+            # self.get_logger().info(f"robot command = {robot.pose_command}")
 
-        #         else:
-        #             robot.pose_command = state['pose']
-        #             robot.arm.q_command = state['q'] + [0.0]
-        #             command_msg.pose.data.extend(robot.pose_command + robot.arm.q_command)
-        #     ref=robot.pose_command+robot.arm.q_command
-        #     robot.write_data_to_file(ref) 
+            cmd_body_wrench = robot.ll_controllers.vehicle_controller(
+                state=veh_state_vec,
+                target=np.array(robot.pose_command, dtype=float),
+                dt=state["dt"]
+            )
+            # Arm PID
+            cmd_arm_tau = robot.ll_controllers.arm_controller(
+                q=state["q"],
+                q_dot=state["dq"],
+                q_ref=robot.arm.q_command,
+                Kp=alpha.Kp,
+                Ki=alpha.Ki,
+                Kd=alpha.Kd,
+                dt=state["dt"],
+                u_max=alpha.u_max,
+                u_min=alpha.u_min,
+            )
 
-        # self.uvms_publisher_.publish(command_msg)
+            arm_tau_list = list(np.asarray(cmd_arm_tau, dtype=float).reshape(-1))
+            # always produce 5 values, slice if longer, pad if shorter
+            arm_tau_list = arm_tau_list[:5] + [0.0]
+
+            robot.publish_commands(cmd_body_wrench, arm_tau_list)
+
+            ref=robot.pose_command+robot.arm.q_command
+            robot.write_data_to_file(ref)
+
 
     def processFeedback(self, feedback):
         # For uv_marker

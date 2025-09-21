@@ -18,6 +18,7 @@ import rclpy
 from rclpy.node import Node
 import numpy as np
 from robot import Robot
+from typing import List
 
 class ParamEstimatorNode(Node):
     def __init__(self):
@@ -37,25 +38,62 @@ class ParamEstimatorNode(Node):
         # Initialize robots (make sure your Robot class is defined properly).
         initial_ref_pos = np.array([0.0, 0.0, 0.0, 0, 0, 0, 3.1, 0.7, 0.4, 2.1])
 
-        self.robots = []
+        # List of Robot objects
+        self.robots: List[Robot] = []
+
         for k, (prefix, controller) in enumerate(list(zip(self.robots_prefix, self.controllers))):
             robot_k = Robot(self, k, 4, prefix, initial_ref_pos, self.record, controller)
+            # robot_k.initialize_manipulator_estimator_writer()
+            # robot_k.initialize_vehicle_estimator_writer()
             self.robots.append(robot_k)
-            self.get_logger().info(f"\033[35mEstimator running on {robot_k.robot_name}\033[0m")
+            
 
         # Create a timer callback to publish commands at 1000 Hz.
-        frequency = 1000  # Hz
-        self.timer = self.create_timer(1.0 / frequency, self.timer_callback)    
+        
+        frequency = 50  # Hz
+        # self.manipulator_estimate_timer = self.create_timer(1.0 / frequency, self.timer_manipulator_estimate_callback)
+        # self.manipulator_estimate_logger_timer = self.create_timer(1.0 / frequency, self.timer_manipulator_estimate_logger_callback)
+        # self.get_logger().info(f"\033[35mManipulator estimator running on {robot_k.robot_name}\033[0m")
 
-    def timer_callback(self):
+        # self.vehicle_estimate_timer = self.create_timer(1.0 / frequency, self.timer_vehicle_estimate_callback)
+        # self.vehicle_estimate_logger_timer = self.create_timer(1.0 / frequency, self.timer_vehicle_estimate_logger_callback)
+        # self.get_logger().info(f"\033[35mVehicle estimator running on {robot_k.robot_name}\033[0m")
+
+    def timer_manipulator_estimate_callback(self):
         for robot in self.robots:
-            pass
+            state = robot.get_state()
+            if state['status']=='active':
+                robot.estimate_manipulator_parameter()
+                
+    def timer_manipulator_estimate_logger_callback(self):
+        for robot in self.robots:
+            state = robot.get_state()
+            if state['status']=='active':
+                if robot.arm.has_intialize_manipulator_estimator:
+                    robot.pretty_log_manipulator_params()
 
-
+    def timer_vehicle_estimate_callback(self):
+        for robot in self.robots:
+            state = robot.get_state()
+            if state['status']=='active':
+                robot.estimate_vehicle_parameter()
+                
+    def timer_vehicle_estimate_logger_callback(self):
+        for robot in self.robots:
+            state = robot.get_state()
+            if state['status']=='active':
+                if robot.has_intialize_vehicle_estimator:
+                    robot.pretty_print_vehicle_params()
+                
     def destroy_node(self):
         for robot in self.robots:
-            if robot.record:
-                robot.close_csv()
+            # robot.close_manipulator_estimates_csv()
+            # robot.close_vehicle_estimates_csv()
+            if getattr(robot, 'record', False):
+                try:
+                    robot.close_csv()
+                except Exception:
+                    pass
         super().destroy_node()
 
 def main(args=None):

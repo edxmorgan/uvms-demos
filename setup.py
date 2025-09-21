@@ -11,8 +11,6 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        ('share/' + package_name, ['resource/fk_eval.casadi']),
-        ('share/' + package_name, ['resource/workspace.npy']),
         (
             'share/' + package_name + '/manipulator',
             glob('resource/manipulator/*')
@@ -26,7 +24,8 @@ setup(
         ('lib/' + package_name, [package_name+'/blue_rov.py']),
         ('lib/' + package_name, [package_name+'/alpha_reach.py']),
         ('lib/' + package_name, [package_name+'/task.py']),
-        ('lib/' + package_name, [package_name+'/controller_msg.py'])
+        ('lib/' + package_name, [package_name+'/controller_msg.py']),
+        ('lib/' + package_name, [package_name+'/controllers.py'])
     ],
 
     install_requires=['setuptools'],
