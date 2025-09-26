@@ -88,11 +88,11 @@ class PS4TeleopNode(Node):
                     a_joint= robot.jointa
             wrench_body_6 = [surge, sway, heave, roll, pitch, yaw]
             arm_effort_5 = [e_joint, d_joint, c_joint, b_joint, a_joint]
-
+            # self.get_logger().info(f"ROV Command: {wrench_body_6}, Arm Command: {arm_effort_5}")
             robot.publish_commands(wrench_body_6, arm_effort_5)
             robot.write_data_to_file()
             robot.publish_robot_path()
-
+            
     def destroy_node(self):
         for robot in self.robots:
             if robot.record:

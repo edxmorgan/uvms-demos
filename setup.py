@@ -43,6 +43,7 @@ setup(
             'direct_thruster_controller = simlab.direct_thruster_control:main',
             'cloudpoint_publisher = simlab.cloudpoint:main',
             'estimator_publisher = simlab.estimator:main',
+            'mocap_publisher = simlab.mocap:main',
         ],
     },
 )

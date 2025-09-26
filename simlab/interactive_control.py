@@ -231,11 +231,13 @@ class BasicControlsNode(Node):
             # log to terminal
             # self.get_logger().info(f"robot command = {robot.pose_command}")
 
-            cmd_body_wrench = robot.ll_controllers.vehicle_controller(
-                state=veh_state_vec,
-                target=np.array(robot.pose_command, dtype=float),
-                dt=state["dt"]
-            )
+            # cmd_body_wrench = robot.ll_controllers.vehicle_controller(
+            #     state=veh_state_vec,
+            #     target=np.array(robot.pose_command, dtype=float),
+            #     dt=state["dt"]
+            # )
+
+            cmd_body_wrench = np.zeros(6)
             # Arm PID
             cmd_arm_tau = robot.ll_controllers.arm_controller(
                 q=state["q"],

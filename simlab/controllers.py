@@ -14,8 +14,8 @@ class LowLevelController:
         self.vehicle_pid_i_buffer = np.zeros(6, dtype=float)  # 6 dof vehicle integral buffer
 
         # Integral buffer hardening, clamp and leak
-        self.vehicle_i_limit = np.array([50, 50, 50, 50, 50, 50], dtype=float)  # per axis clamp
-        self.vehicle_i_leak_per_s = 0.1  # leak coefficient in 1 per second, set 0.0 to disable
+        self.vehicle_i_limit = np.array([3, 3, 3, 3, 3, 3], dtype=float)  # per axis clamp
+        self.vehicle_i_leak_per_s = 0.0  # leak coefficient in 1 per second, set 0.0 to disable
 
         # Arm PID
         arm_pid_controller_path = os.path.join(package_share_directory, 'manipulator/arm_pid.casadi')
