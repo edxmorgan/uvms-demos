@@ -49,9 +49,6 @@ class BasicControlsNode(Node):
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
-        uvms_FK_path = os.path.join(package_share_directory, 'fk_eval.casadi')
-        self.uvms_FK = ca.Function.load(uvms_FK_path)
-
         # Example: get some parameters
         self.no_robot = self.get_parameter('no_robot').value
         self.no_efforts = self.get_parameter('no_efforts').value
@@ -149,7 +146,7 @@ class BasicControlsNode(Node):
                       self.q1_des,
                       self.q2_des, 
                       self.q3_des])
-        temp_dm = self.uvms_FK(self.n_int_est, alpha.base_T0)
+        temp_dm = Robot.uvms_Forward_kinematics(self.n_int_est, alpha.base_T0)
         self.last_valid_task_pose = self.dm_to_pose(temp_dm[4])
 
         self.task_marker = self.make_UVMS_Dof_Marker(
@@ -231,13 +228,14 @@ class BasicControlsNode(Node):
             # log to terminal
             # self.get_logger().info(f"robot command = {robot.pose_command}")
 
-            # cmd_body_wrench = robot.ll_controllers.vehicle_controller(
-            #     state=veh_state_vec,
-            #     target=np.array(robot.pose_command, dtype=float),
-            #     dt=state["dt"]
-            # )
+            cmd_body_wrench = robot.ll_controllers.vehicle_controller(
+                state=veh_state_vec,
+                target=np.array(robot.pose_command, dtype=float),
+                dt=state["dt"]
+            )
 
-            cmd_body_wrench = np.zeros(6)
+            # cmd_body_wrench = np.zeros(6)
+            # cmd_body_wrench = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 2.0])
             # Arm PID
             cmd_arm_tau = robot.ll_controllers.arm_controller(
                 q=state["q"],

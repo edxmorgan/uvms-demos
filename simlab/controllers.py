@@ -38,16 +38,7 @@ class LowLevelController:
         if target.size != 6:
             raise ValueError(f"target must have 6 elements, got {target.size}")
 
-        # Integral buffer hygiene, clamp and leak
-        buf = np.asarray(self.vehicle_pid_i_buffer, dtype=float).reshape(-1)
-        if buf.size != 6:
-            buf = np.zeros(6, dtype=float)
-
-        leak = float(self.vehicle_i_leak_per_s)
-        if leak > 0.0 and dt > 0.0:
-            buf *= max(0.0, 1.0 - leak * float(dt))  # exponential-like decay
-
-        buf = np.clip(buf, -self.vehicle_i_limit, self.vehicle_i_limit)
+        buf = np.zeros(6, dtype=float)  # Disable integral action for now
 
         pid_control, i_buf_next = self.uv_pid_controller(
             blue.W,

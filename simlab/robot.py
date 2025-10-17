@@ -619,6 +619,20 @@ class Robot(Base):
                 self.listener_callback,
                 10
             )
+        
+        # Latest mocap pose [x, y, z, qw, qx, qy, qz]
+        self.mocap_latest = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
+
+        # Subscribe to the ENU, origin offset pose from MocapPathBuilder
+        # Topic name must match MocapPathBuilder.mocap_pose_topic, default 'mocap_pose'
+        self.mocap_pose_sub = node.create_subscription(
+            PoseStamped,
+            'mocap_pose',
+            self._mocap_pose_cb,
+            10
+        )
+
+
         self.k_robot = k_robot
         self.robot_name = f'uvms {prefix}: {k_robot}'
         self.subscription  # prevent unused variable warning
@@ -633,6 +647,9 @@ class Robot(Base):
         manipulator_regressor_path = os.path.join(package_share_directory, 'manipulator/arm_id_Y.casadi')
 
         self.fk_eval = ca.Function.load(fk_path) # differential inverse kinematics
+        # also set a class attribute fk_eval so it can be shared
+        if not hasattr(Robot, "fk_eval_cls"):
+            Robot.fk_eval_cls = self.fk_eval
         self.vehicle_J = ca.Function.load(vehicle_J_path)
         self.vehicle_Y = ca.Function.load(vehicle_regressor_path)
         self.manipulator_Y = ca.Function.load(manipulator_regressor_path)
@@ -809,6 +826,18 @@ class Robot(Base):
             self.has_joystick_interface = True
         else:
             self.node.get_logger().info(f"No joystick device found for robot {self.k_robot}.")
+    
+    @classmethod
+    def uvms_Forward_kinematics(cls, wb_states, base_T0):
+        return cls.fk_eval_cls(wb_states, base_T0)
+    
+    def _mocap_pose_cb(self, msg: PoseStamped):
+        p = msg.pose.position
+        q = msg.pose.orientation
+        # Order matches your CSV header: x, y, z, qw, qx, qy, qz
+        self.mocap_latest = [float(p.x), float(p.y), float(p.z),
+                            float(q.w), float(q.x), float(q.y), float(q.z)]
+
 
     def set_robot_command_status(self):
         state = self.get_state()
@@ -974,6 +1003,7 @@ class Robot(Base):
         xq['sim_time'] = self.sim_time
         xq['prefix'] = self.prefix
         xq['raw_sensor_readings'] = self.sensor_reading
+        xq['mocap'] = self.mocap_latest  # add this line
         # self.node.get_logger().info(f"body forces {xq['raw_sensor_readings']}")
         return xq
 
@@ -1186,7 +1216,9 @@ class Robot(Base):
                 "P_x_x", "P_y_y", "P_z_z", "P_roll_roll", "P_pitch_pitch", "P_yaw_yaw",
                 "P_u_u", "P_v_v", "P_w_w", "P_p_p", "P_q_q", "P_r_r",
 
-                "payload.mass", "payload.Ixx", "payload.Iyy", "payload.Izz"
+                "payload.mass", "payload.Ixx", "payload.Iyy", "payload.Izz",
+
+                "mocap_x", "mocap_y", "mocap_z", "mocap_q_w", "mocap_q_x", "mocap_q_y", "mocap_q_z",
             ]
 
             self.csv_writer.writerow(columns)
@@ -1213,6 +1245,7 @@ class Robot(Base):
             row_data.extend(self.prediction_readings)
             row_data.extend(self.state_estimate_readings)
             row_data.extend(self.payload_state_readings)
+            row_data.extend(info['mocap'])
 
             if all(value == 0 for value in row_data):
                 return

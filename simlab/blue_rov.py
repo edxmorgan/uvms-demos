@@ -121,7 +121,7 @@ class Params:
 
     kp = np.array([0.5, 0.5, 0.5, 0.5, 0.5, 0.5])
     ki = np.array([0, 0, 0, 0, 0, 0])
-    kd = np.array([2, 2, 2, 2, 2, 2])
+    kd = np.array([0.2, 0.2, 0.2, 0.2, 0.2, 0.2])
     
     sim_params = np.concatenate(( np.array([m]) , np.array([W]), np.array([B]), 
                                            rg, rb, Io, added_m, coupl_added_m, linear_dc, quadratic_dc, v_flow))
