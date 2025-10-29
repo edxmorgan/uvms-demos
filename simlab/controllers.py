@@ -22,6 +22,7 @@ class LowLevelController:
         self.arm_pid_controller = ca.Function.load(arm_pid_controller_path)
         self.arm_dof = int(arm_dof)
         self.arm_pid_i_buffer = np.zeros(self.arm_dof, dtype=float)  # arm integral buffer
+        self.g_ff = [0,0,0,0]  # feedforward gravity compensation
 
     def vehicle_controller(self, state: np.ndarray, target: np.ndarray, dt: float) -> np.ndarray:
         """
@@ -110,6 +111,7 @@ class LowLevelController:
             ca.DM(Kd),
             ca.DM(buf),
             float(dt),
+            ca.DM(self.g_ff),
             ca.DM(u_max),
             ca.DM(u_min),
         )

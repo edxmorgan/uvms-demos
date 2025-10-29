@@ -32,9 +32,9 @@ class Params:
     u_min = np.array([-1.5, -1, -1, -0.54])
     u_max = np.array([1.5, 1, 1, 0.54])
     
-    Kp = cs.vertcat(10.0, 10.0, 10.0, 10.0)
+    Kp = cs.vertcat(8.0, 8.0, 8.0, 8.0)
     Ki = cs.vertcat(0.0, 0.0, 0.0, 0.0)
-    Kd = cs.vertcat(1.0, 1.0, 1.0, 1.0)
+    Kd = cs.vertcat(0.0, 0.0, 0.0, 0.0)
 
     # reducing model parameters by assuming non rotating axis are inertialess or inactivity
     Gear_p = cs.vertcat(2253.54, 2253.54, 2253.54, 340.4)
