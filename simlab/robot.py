@@ -792,6 +792,7 @@ class Robot(Base):
         self.ref_acc = np.zeros(10)
         self.ref_vel = np.zeros(10)
         self.ref_pos = initial_ref_pos
+        self.velocity_yaw = None
 
        # Initialize path poses
         self.path_poses = []
@@ -867,14 +868,14 @@ class Robot(Base):
             blend_factor = np.clip((pos_blend_threshold - pos_error) / pos_blend_threshold, 0.0, 1.0)
 
             # Get the velocity-based yaw.
-            velocity_yaw = self.orient_towards_velocity()
+            self.velocity_yaw = self.orient_towards_velocity()
 
             # If velocity_yaw is not available, simply use the target yaw.
-            if velocity_yaw is None:
+            if self.velocity_yaw is None:
                 final_yaw = self.pose_command[5]
             else:
                 # Blend the yaw values: more weight to target_yaw as the position error decreases.
-                final_yaw = (1 - blend_factor) * velocity_yaw + blend_factor * self.pose_command[5]
+                final_yaw = (1 - blend_factor) * self.velocity_yaw + blend_factor * self.pose_command[5]
 
             self.node.get_logger().debug(f"pos_error: {pos_error:.3f}, blend_factor: {blend_factor:.3f}, final_yaw: {final_yaw:.3f}")
 
@@ -1141,7 +1142,6 @@ class Robot(Base):
             return adjusted_yaw
 
             # self.node.get_logger().info(f"Orienting towards velocity:current yaw={current_yaw} radians  desired yaw={desired_yaw} radians adjusted yaw={adjusted_yaw} radians")
-
 
     def normalize_angle(self, desired_yaw, current_yaw):
         # Compute the smallest angular difference

@@ -28,7 +28,18 @@ setup(
         ('lib/' + package_name, [package_name+'/controllers.py'])
     ],
 
-    install_requires=['setuptools'],
+    install_requires=['setuptools',
+                      'rclpy',
+                      'std_msgs',
+                      'sensor_msgs',
+                      'geometry_msgs',
+                      'visualization_msgs',
+                      'tf2_ros',
+                      'numpy',
+                      'trimesh',
+                      'pycollada',
+                      'python-fcl',
+                      ],
     zip_safe=True,
     maintainer='mr-robot',
     maintainer_email='edmorgangh@gmail.com',
@@ -45,6 +56,7 @@ setup(
             'estimator_publisher = simlab.estimator:main',
             'mocap_publisher = simlab.use_mocap:main',
             'motive_publisher = simlab.sim_motive:main',
+            'stl_collision_node = simlab.stl_collision:main',
         ],
     },
 )
