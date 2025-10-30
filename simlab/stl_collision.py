@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-import os, math
 import numpy as np
 import rclpy, trimesh, fcl
 from rclpy.node import Node
 from tf2_ros import Buffer, TransformListener
 from geometry_msgs.msg import TransformStamped
-from ament_index_python.packages import get_package_share_directory
 from visualization_msgs.msg import Marker
 from std_msgs.msg import ColorRGBA
-
+from scipy.spatial.transform import Rotation as R
+from urdf_parser_py.urdf import URDF
+import re
+from urdf_parser_py.urdf import Mesh
 RESET="\033[0m"; BOLD="\033[1m"; GRN="\033[32m"; CYN="\033[36m"; MAG="\033[35m"
 
 
@@ -17,31 +18,24 @@ def color(r, g, b, a):
     c.r, c.g, c.b, c.a = float(r), float(g), float(b), float(a)
     return c
 
-def rpy_to_R(roll, pitch, yaw):
-    cr, sr = math.cos(roll), math.sin(roll)
-    cp, sp = math.cos(pitch), math.sin(pitch)
-    cy, sy = math.cos(yaw), math.sin(yaw)
-    Rz = np.array([[cy, -sy, 0],
-                   [sy,  cy, 0],
-                   [ 0,   0, 1]], float)
-    Ry = np.array([[ cp, 0, sp],
-                   [  0, 1,  0],
-                   [-sp, 0, cp]], float)
-    Rx = np.array([[1,  0,   0],
-                   [0, cr, -sr],
-                   [0, sr,  cr]], float)
-    return Rz @ Ry @ Rx
+def se3_from_rpy_xyz(rpy, xyz):
+    """Return a 4x4 homogeneous transform from rpy and xyz."""
+    roll, pitch, yaw = rpy
+    tx, ty, tz = xyz
+    T = np.eye(4, dtype=float)
+    T[:3, :3] = R.from_euler('xyz', [roll, pitch, yaw], degrees=False).as_matrix()
+    T[:3, 3] = [tx, ty, tz]
+    return T
 
-def fcl_bvh_from_mesh(path, scale=1.0, rpy=(0.0, 0.0, 0.0)):
+def fcl_bvh_from_mesh(path, scale=[1.0, 1.0, 1.0], rpy=(0.0, 0.0, 0.0), xyz=(0.0, 0.0, 0.0)):
     scene_or_mesh = trimesh.load(path, force='scene')
     mesh = scene_or_mesh.dump(concatenate=True) if isinstance(scene_or_mesh, trimesh.Scene) else scene_or_mesh
     if scale != 1.0:
-        mesh.apply_scale(float(scale))
-    if any(abs(a) > 1e-12 for a in rpy):
-        R = rpy_to_R(*rpy)
-        T = np.eye(4)
-        T[:3, :3] = R
+        mesh.apply_scale(np.array(scale))
+    if any(abs(v) > 1e-12 for v in rpy) or any(abs(v) > 1e-12 for v in xyz):
+        T = se3_from_rpy_xyz(rpy, xyz)  # 4x4
         mesh.apply_transform(T)
+
     V = np.asarray(mesh.vertices, dtype=np.float64)
     F = np.asarray(mesh.faces, dtype=np.int32)
     if V.size == 0 or F.size == 0:
@@ -65,128 +59,207 @@ def make_mesh_marker(ns, mid, frame, package_uri, scale_xyz, color):
     m.color = color
     return m
 
+
+_ROS2_CTRL_RE = re.compile(r"<\s*ros2_control[\s\S]*?</\s*ros2_control\s*>", re.MULTILINE)
+
+def _parse_urdf_no_ros2_control(urdf_string: str) -> URDF:
+    urdf_clean = _ROS2_CTRL_RE.sub("", urdf_string)
+    return URDF.from_xml_string(urdf_clean)
+
+def _strip_file_prefix(uri: str) -> str:
+    # Remove leading file:// if present
+    if uri.startswith("file://"):
+        return uri[len("file://"):]
+    return uri
+
+def log_all_visual_meshes(self, urdf_string: str):
+    model = _parse_urdf_no_ros2_control(urdf_string)
+    visuals_info = []
+
+    for link in model.links or []:
+        for idx, vis in enumerate(getattr(link, "visuals", []) or []):
+            geom = getattr(vis, "geometry", None)
+            if not isinstance(geom, Mesh):
+                continue
+
+            origin = getattr(vis, "origin", None)
+
+            xyz = list(getattr(origin, "xyz", [0.0, 0.0, 0.0]) or [0.0, 0.0, 0.0])
+            rpy = list(getattr(origin, "rpy", [0.0, 0.0, 0.0]) or [0.0, 0.0, 0.0])
+            scale = list(getattr(geom, "scale", [1.0, 1.0, 1.0]) or [1.0, 1.0, 1.0])
+
+            raw_uri = getattr(geom, "filename", "")
+            uri = _strip_file_prefix(raw_uri)
+
+            info = {
+                "link": link.name,
+                "xyz": xyz,
+                "rpy": rpy,
+                "scale": scale,
+                "uri": uri,
+            }
+            visuals_info.append(info)
+
+            # self.get_logger().info(
+            #     f"link {link.name} uri {uri} xyz {xyz} rpy {rpy} scale {scale}"
+            # )
+
+    return visuals_info
+
 class CollisionNode(Node):
     def __init__(self):
         super().__init__('mesh_collision_node')
+        self.declare_parameter('robot_description', '')
+
+        urdf_string = self.get_parameter('robot_description').get_parameter_value().string_value
+        if not urdf_string:
+            self.get_logger().error('robot_description param is empty. Did you load it into the param server in launch')
+            raise RuntimeError('no robot_description')
+    
+        # walk all links and collect meshes
+        meshes_info = log_all_visual_meshes(self, urdf_string)
+
+        # split links into robot links and environment links
+        robot_links = []
+        env_links = []
+
+        for m in meshes_info:
+            link_name = m['link']
+            if link_name.startswith('robot_'):
+                robot_links.append(m)
+            elif link_name.startswith('bathymetry_'):
+                env_links.append(m)
+
+        self.get_logger().info(f'robot_links { [x["link"] for x in robot_links] }')
+        self.get_logger().info(f'env_links { [x["link"] for x in env_links] }')
+
+        self.bodies_robot = self.build_bodies(robot_links, "robot")
+        self.bodies_env   = self.build_bodies(env_links,   "env")
+
         self.tf_buf = Buffer()
         self.tf = TransformListener(self.tf_buf, self)
         self.contact_pub = self.create_publisher(Marker, 'contact_markers', 10)
         self.mesh_pub = self.create_publisher(Marker, 'mesh_debug', 10)
 
-        pkg = 'ros2_control_blue_reach_5'
-        pkg_share = get_package_share_directory(pkg)
-
-        robot_mesh_path = os.path.join(pkg_share, 'blue/meshes/bluerov2_heavy_reach/bluerov2_heavy_reach.dae')
-        seafloor_mesh_path = os.path.join(pkg_share, 'Bathymetry/meshes/hawaii_cropped.stl')
-        shipwreck_mesh_path = os.path.join(pkg_share, 'Bathymetry/meshes/manhomansett.stl')
-
-        self.robot_frame = 'robot_1_base_link'
-        self.seafloor_frame = 'bathymetry_seafloor'
-        self.shipwreck_frame = 'bathymetry_shipwreck'
-
-        robot_scale = 0.025
-        robot_rpy = (0.0, 0.0, 0.0)
-
-        seafloor_scale = 0.4
-        seafloor_rpy = (0.0, 0.0, 0.0)
-
-        shipwreck_scale = 5.0
-        shipwreck_rpy = (math.pi/2.0, 0.0, 0.0)
-
-        self.get_logger().info(f'Loading robot mesh, {robot_mesh_path}')
-        self.get_logger().info(f'Loading seafloor mesh, {seafloor_mesh_path}')
-        self.get_logger().info(f'Loading shipwreck mesh, {shipwreck_mesh_path}')
-
-        robot_bvh, nV_r, nF_r = fcl_bvh_from_mesh(robot_mesh_path, robot_scale, robot_rpy)
-        seafloor_bvh, nV_s, nF_s = fcl_bvh_from_mesh(seafloor_mesh_path, seafloor_scale, seafloor_rpy)
-        shipwreck_bvh, nV_w, nF_w = fcl_bvh_from_mesh(shipwreck_mesh_path, shipwreck_scale, shipwreck_rpy)
-
-        self.robot_obj = fcl.CollisionObject(robot_bvh)
-        self.seafloor_obj = fcl.CollisionObject(seafloor_bvh)
-        self.shipwreck_obj = fcl.CollisionObject(shipwreck_bvh)
-
-        self.get_logger().info(f'{GRN}Robot BVH built{RESET}, vertices {BOLD}{nV_r}{RESET}, faces {BOLD}{nF_r}{RESET}')
-        self.get_logger().info(f'{CYN}Seafloor BVH built{RESET}, vertices {BOLD}{nV_s}{RESET}, faces {BOLD}{nF_s}{RESET}')
-        self.get_logger().info(f'{MAG}Shipwreck BVH built{RESET}, vertices {BOLD}{nV_w}{RESET}, faces {BOLD}{nF_w}{RESET}')
-
-        robot_uri = f'package://{pkg}/blue/meshes/bluerov2_heavy_reach/bluerov2_heavy_reach.dae'
-        seafloor_uri = f'package://{pkg}/Bathymetry/meshes/hawaii_cropped.stl'
-        shipwreck_uri = f'package://{pkg}/Bathymetry/meshes/manhomansett.stl'
-
-        self.mesh_markers = [
-            make_mesh_marker('debug', 1, self.robot_frame,    robot_uri,    (robot_scale,)*3,    color(1.0, 1.0, 1.0, 0.95)),
-            make_mesh_marker('debug', 2, self.seafloor_frame, seafloor_uri, (seafloor_scale,)*3, color(0.6, 0.7, 0.9, 0.7)),
-            make_mesh_marker('debug', 3, self.shipwreck_frame, shipwreck_uri, (shipwreck_scale,)*3, color(0.9, 0.7, 0.7, 0.7)),
-        ]
-
-
         self.timer = self.create_timer(0.05, self.tick)
 
-    def set_from_tf(self, obj, target_frame):
-        try:
-            t: TransformStamped = self.tf_buf.lookup_transform('world', target_frame, rclpy.time.Time())
-            q = t.transform.rotation
-            p = t.transform.translation
-            obj.setTransform(fcl.Transform([q.w, q.x, q.y, q.z], [p.x, p.y, p.z]))
-            return True
-        except Exception:
-            return False
-
     def tick(self):
-        ok_robot = self.set_from_tf(self.robot_obj, self.robot_frame)
-        ok_floor = self.set_from_tf(self.seafloor_obj, self.seafloor_frame)
-        ok_wreck = self.set_from_tf(self.shipwreck_obj, self.shipwreck_frame)
-        if not (ok_robot and ok_floor and ok_wreck):
+        # sync transforms for every body
+        ok_list = list(map(self.set_from_tf, self.bodies_robot + self.bodies_env))
+        if not np.all(ok_list):
             return
 
-        # publish debug meshes
-        for m in self.mesh_markers:
-            self.mesh_pub.publish(m)
+        CONTACT_MARKER_SIZE = 0.15
+        NEAR_THRESH = 1.0
 
-        # one request, fresh result objects
-        req = fcl.CollisionRequest(num_max_contacts=64, enable_contact=True)
-
-        res_floor = fcl.CollisionResult()
-        count_floor = fcl.collide(self.robot_obj, self.seafloor_obj, req, res_floor)
-
-        res_wreck = fcl.CollisionResult()
-        count_wreck = fcl.collide(self.robot_obj, self.shipwreck_obj, req, res_wreck)
-
-        # clear and draw
+        # clear old markers once per tick
         clear = Marker()
         clear.header.frame_id = 'world'
         clear.action = Marker.DELETEALL
         self.contact_pub.publish(clear)
 
-        CONTACT_MARKER_SIZE = 0.08
+        req = fcl.CollisionRequest(num_max_contacts=200, enable_contact=True)
+        dreq = fcl.DistanceRequest(enable_nearest_points=True)
 
-        if count_floor > 0:
-            for i, c in enumerate(res_floor.contacts):
-                m = Marker()
-                m.header.frame_id = 'world'
-                m.type = Marker.SPHERE
-                m.action = Marker.ADD
-                m.scale.x = m.scale.y = m.scale.z = CONTACT_MARKER_SIZE
-                m.color = ColorRGBA(r=1.0, g=0.1, b=0.1, a=1.0)  # red
-                m.pose.position.x, m.pose.position.y, m.pose.position.z = c.pos
-                m.id = i
-                self.contact_pub.publish(m)
+        marker_id_counter = 0
 
-        if count_wreck > 0:
-            base_id = 1000
-            for i, c in enumerate(res_wreck.contacts):
-                m = Marker()
-                m.header.frame_id = 'world'
-                m.type = Marker.SPHERE
-                m.action = Marker.ADD
-                m.scale.x = m.scale.y = m.scale.z = CONTACT_MARKER_SIZE
-                m.color = ColorRGBA(r=0.1, g=0.9, b=0.1, a=1.0)  # green
-                m.pose.position.x, m.pose.position.y, m.pose.position.z = c.pos
-                m.id = base_id + i
-                self.contact_pub.publish(m)
+        # loop every robot link vs every env object
+        for rob in self.bodies_robot:
+            for env in self.bodies_env:
+                # distance first
+                dres = fcl.DistanceResult()
+                fcl.distance(rob["fcl_obj"], env["fcl_obj"], dreq, dres)
 
-        self.get_logger().info(f'contacts, seafloor {count_floor}, shipwreck {count_wreck}')
+                # draw yellow near miss if within NEAR_THRESH and not actually colliding
+                if 0.0 < dres.min_distance < NEAR_THRESH:
+                    px, py, pz = dres.nearest_points[1]  # point on env surface
 
+                    m = Marker()
+                    m.header.frame_id = 'world'
+                    m.ns = 'near'
+                    m.id = marker_id_counter
+                    marker_id_counter += 1
+                    m.type = Marker.SPHERE
+                    m.action = Marker.ADD
+                    m.scale.x = m.scale.y = m.scale.z = CONTACT_MARKER_SIZE
+                    m.color = ColorRGBA(r=1.0, g=1.0, b=0.1, a=1.0)  # yellow
+                    m.pose.position.x = px
+                    m.pose.position.y = py
+                    m.pose.position.z = pz
+                    self.contact_pub.publish(m)
+
+                    # log near miss distance
+                    # self.get_logger().info(
+                    #     f'near {rob["name"]} vs {env["name"]}, dist {dres.min_distance:.3f} m'
+                    # )
+
+                # now collide
+                cres = fcl.CollisionResult()
+                hit_count = fcl.collide(rob["fcl_obj"], env["fcl_obj"], req, cres)
+
+                if hit_count > 0:
+                    # red markers for contact points
+                    for c in cres.contacts:
+                        m = Marker()
+                        m.header.frame_id = 'world'
+                        m.ns = 'contact'
+                        m.id = marker_id_counter
+                        marker_id_counter += 1
+                        m.type = Marker.SPHERE
+                        m.action = Marker.ADD
+                        m.scale.x = m.scale.y = m.scale.z = CONTACT_MARKER_SIZE
+                        m.color = ColorRGBA(r=1.0, g=0.1, b=0.1, a=1.0)  # red
+                        m.pose.position.x, m.pose.position.y, m.pose.position.z = c.pos
+                        self.contact_pub.publish(m)
+
+                    # log collision
+                    # self.get_logger().info(
+                    #     f'collision {rob["name"]} vs {env["name"]}, contacts {hit_count}'
+                    # )
+
+
+    def build_bodies(self, link_list, kind):
+        """
+        link_list is a list of dicts from meshes_info
+        kind is just a string for logging, like "robot" or "env"
+        returns a list of {name, frame, fcl_obj}
+        """
+        out = []
+        for m in link_list:
+            path_abs  = m['uri']
+            scale_vec = m['scale']
+            xyz       = tuple(m['xyz'])
+            rpy       = tuple(m['rpy'])
+
+            bvh, nV, nF = fcl_bvh_from_mesh(path_abs, scale_vec, rpy, xyz)
+            obj = fcl.CollisionObject(bvh)
+
+            out.append({
+                "name":  m['link'],
+                "frame": m['link'],   # assume TF frame matches link name
+                "fcl_obj": obj,
+            })
+
+            self.get_logger().info(f'{kind} body {m["link"]} verts {nV} faces {nF}')
+
+        return out
+
+    def set_from_tf(self, body):
+        try:
+            t: TransformStamped = self.tf_buf.lookup_transform(
+                'world',
+                body["frame"],
+                rclpy.time.Time()
+            )
+            q = t.transform.rotation
+            p = t.transform.translation
+            body["fcl_obj"].setTransform(
+                fcl.Transform([q.w, q.x, q.y, q.z], [p.x, p.y, p.z])
+            )
+            return True
+        except Exception:
+            return False
+        
 
 def main():
     rclpy.init()
