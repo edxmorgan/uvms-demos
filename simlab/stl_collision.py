@@ -227,7 +227,7 @@ class CollisionNode(Node):
                     depth = float(c.penetration_depth)
 
                     v_rel_n   = 0.0
-                    F_n = STIFFNESS * depth #+ DAMPING * v_rel_n #to do damping later
+                    F_n = STIFFNESS * depth + DAMPING * v_rel_n
                     if F_n < 0.0:
                         F_n = 0.0
  
