@@ -10,6 +10,9 @@ from scipy.spatial.transform import Rotation as R
 from urdf_parser_py.urdf import URDF
 import re
 from urdf_parser_py.urdf import Mesh
+from geometry_msgs.msg import TransformStamped, WrenchStamped
+from tf2_ros import TransformBroadcaster
+
 RESET="\033[0m"; BOLD="\033[1m"; GRN="\033[32m"; CYN="\033[36m"; MAG="\033[35m"
 
 
@@ -17,6 +20,38 @@ def color(r, g, b, a):
     c = ColorRGBA()
     c.r, c.g, c.b, c.a = float(r), float(g), float(b), float(a)
     return c
+
+
+def quat_from_vec_align_x(v):
+    """
+    Build a quaternion [w, x, y, z] whose +X axis aligns with v.
+    If v is ~0, return identity.
+    """
+    v = np.asarray(v, dtype=float)
+    n = np.linalg.norm(v)
+    if n < 1e-9:
+        return np.array([1.0, 0.0, 0.0, 0.0], dtype=float)
+
+    d = v / n
+    x_axis = np.array([1.0, 0.0, 0.0], dtype=float)
+
+    rot, _ = R.align_vectors(d.reshape(1,3), x_axis.reshape(1,3))
+    q_xyzw = rot.as_quat()  # [x,y,z,w]
+    q_wxyz = np.array([q_xyzw[3], q_xyzw[0], q_xyzw[1], q_xyzw[2]], dtype=float)
+    return q_wxyz
+
+def quat_to_rotmat(q_wxyz):
+    """
+    q_wxyz is [w,x,y,z].
+    returns 3x3 rotation matrix world_from_quat.
+    """
+    q_wxyz = np.asarray(q_wxyz, dtype=float)
+    w, x, y, z = q_wxyz
+    q_xyzw = np.array([x, y, z, w], dtype=float)
+    rot = R.from_quat(q_xyzw)
+    return rot.as_matrix()
+
+
 
 def se3_from_rpy_xyz(rpy, xyz):
     """Return a 4x4 homogeneous transform from rpy and xyz."""
@@ -138,84 +173,199 @@ class CollisionNode(Node):
 
         self.tf_buf = Buffer()
         self.tf = TransformListener(self.tf_buf, self)
+
         self.contact_pub = self.create_publisher(Marker, 'contact_markers', 10)
-        self.mesh_pub = self.create_publisher(Marker, 'mesh_debug', 10)
+
+        self.tf_broadcaster = TransformBroadcaster(self)
+        self.contact_wrench_debug_pub = self.create_publisher(WrenchStamped, 'contact_wrench_contacts', 10)
+        self.contact_wrench_pub = self.create_publisher(WrenchStamped, 'contact_wrench_body', 10)
 
         self.timer = self.create_timer(0.05, self.tick)
 
+
     def tick(self):
-        # sync transforms for every body
         ok_list = list(map(self.set_from_tf, self.bodies_robot + self.bodies_env))
         if not np.all(ok_list):
             return
 
         CONTACT_MARKER_SIZE = 0.15
-        NEAR_THRESH = 1.0
+        MAX_CONTACT_FRAMES = 20
+        BASE_LINK = 'robot_1_base_link'
 
-        # clear old markers once per tick
+
+        STIFFNESS = 1.0    # N per m
+        DAMPING   = 0.0    # N per (m per s)
+
+
+        # clear old marker spheres
         clear = Marker()
         clear.header.frame_id = 'world'
         clear.action = Marker.DELETEALL
         self.contact_pub.publish(clear)
 
-        req = fcl.CollisionRequest(num_max_contacts=200, enable_contact=True)
+        # per tick accumulators
+        self.contact_wrenches_world = {}
+        contact_list_this_tick = []  # each item will be dict with p_world, f_lin_world, contact_frame_name
+
+        req  = fcl.CollisionRequest(num_max_contacts=200, enable_contact=True)
         dreq = fcl.DistanceRequest(enable_nearest_points=True)
 
         marker_id_counter = 0
 
-        # loop every robot link vs every env object
         for rob in self.bodies_robot:
             for env in self.bodies_env:
-                # distance first
-                dres = fcl.DistanceResult()
-                fcl.distance(rob["fcl_obj"], env["fcl_obj"], dreq, dres)
-
-                # draw yellow near miss if within NEAR_THRESH and not actually colliding
-                if 0.0 < dres.min_distance < NEAR_THRESH:
-                    px, py, pz = dres.nearest_points[1]  # point on env surface
-
-                    m = Marker()
-                    m.header.frame_id = 'world'
-                    m.ns = 'near'
-                    m.id = marker_id_counter
-                    marker_id_counter += 1
-                    m.type = Marker.SPHERE
-                    m.action = Marker.ADD
-                    m.scale.x = m.scale.y = m.scale.z = CONTACT_MARKER_SIZE
-                    m.color = ColorRGBA(r=1.0, g=1.0, b=0.1, a=1.0)  # yellow
-                    m.pose.position.x = px
-                    m.pose.position.y = py
-                    m.pose.position.z = pz
-                    self.contact_pub.publish(m)
-
-                    # log near miss distance
-                    # self.get_logger().info(
-                    #     f'near {rob["name"]} vs {env["name"]}, dist {dres.min_distance:.3f} m'
-                    # )
-
-                # now collide
+                # collision query
                 cres = fcl.CollisionResult()
                 hit_count = fcl.collide(rob["fcl_obj"], env["fcl_obj"], req, cres)
+                if hit_count <= 0:
+                    continue
 
-                if hit_count > 0:
-                    # red markers for contact points
-                    for c in cres.contacts:
-                        m = Marker()
-                        m.header.frame_id = 'world'
-                        m.ns = 'contact'
-                        m.id = marker_id_counter
-                        marker_id_counter += 1
-                        m.type = Marker.SPHERE
-                        m.action = Marker.ADD
-                        m.scale.x = m.scale.y = m.scale.z = CONTACT_MARKER_SIZE
-                        m.color = ColorRGBA(r=1.0, g=0.1, b=0.1, a=1.0)  # red
-                        m.pose.position.x, m.pose.position.y, m.pose.position.z = c.pos
-                        self.contact_pub.publish(m)
+                for c in cres.contacts:
+                    p_world = np.array(c.pos, dtype=float)
 
-                    # log collision
-                    # self.get_logger().info(
-                    #     f'collision {rob["name"]} vs {env["name"]}, contacts {hit_count}'
-                    # )
+                    n_world_env_on_robot = -np.array(c.normal, dtype=float)
+                    depth = float(c.penetration_depth)
+
+                    v_rel_n   = 0.0
+                    F_n = STIFFNESS * depth #+ DAMPING * v_rel_n #to do damping later
+                    if F_n < 0.0:
+                        F_n = 0.0
+ 
+                    f_lin_world = F_n * n_world_env_on_robot  # force on robot in world frame
+
+                    # torque about link origin in world frame
+                    link_pos_world = rob["last_world_pos"]
+                    r_world = p_world - link_pos_world
+                    tau_world = np.cross(r_world, f_lin_world)
+
+                    # accumulate net wrench for this link in world frame
+                    wrench_world_vec = np.concatenate([f_lin_world, tau_world], axis=0)
+                    link_key = rob["name"]
+                    if link_key not in self.contact_wrenches_world:
+                        self.contact_wrenches_world[link_key] = np.zeros(6, dtype=float)
+                    self.contact_wrenches_world[link_key] += wrench_world_vec
+
+                    # visualize contact point as red sphere (optional but helpful)
+                    sphere = Marker()
+                    sphere.header.frame_id = 'world'
+                    sphere.ns = 'contact'
+                    sphere.id = marker_id_counter
+                    marker_id_counter += 1
+                    sphere.type = Marker.SPHERE
+                    sphere.action = Marker.ADD
+                    sphere.scale.x = sphere.scale.y = sphere.scale.z = CONTACT_MARKER_SIZE
+                    sphere.color = ColorRGBA(r=1.0, g=0.1, b=0.1, a=1.0)  # red
+                    sphere.pose.position.x = float(p_world[0])
+                    sphere.pose.position.y = float(p_world[1])
+                    sphere.pose.position.z = float(p_world[2])
+                    self.contact_pub.publish(sphere)
+
+                    # save contact info for later TF and wrench publishing
+                    if len(contact_list_this_tick) < MAX_CONTACT_FRAMES:
+                        contact_list_this_tick.append({
+                            "p_world": p_world,
+                            "f_lin_world": f_lin_world
+                        })
+
+        # publish per contact TF frames and per contact wrenches
+        # reuse a fixed pool of names: contact_0 ... contact_(MAX_CONTACT_FRAMES-1)
+        now_stamp = self.get_clock().now().to_msg()
+
+        for i in range(MAX_CONTACT_FRAMES):
+            frame_id = f"contact_{i}"
+
+            if i < len(contact_list_this_tick):
+                p_world = contact_list_this_tick[i]["p_world"]
+                f_lin_world = contact_list_this_tick[i]["f_lin_world"]
+
+                # orientation so +X lines up with force
+                q_wxyz = quat_from_vec_align_x(f_lin_world)
+
+                # broadcast TF for this contact frame
+                tf_msg = TransformStamped()
+                tf_msg.header.stamp = now_stamp
+                tf_msg.header.frame_id = 'world'
+                tf_msg.child_frame_id = frame_id
+                tf_msg.transform.translation.x = float(p_world[0])
+                tf_msg.transform.translation.y = float(p_world[1])
+                tf_msg.transform.translation.z = float(p_world[2])
+                tf_msg.transform.rotation.w = float(q_wxyz[0])
+                tf_msg.transform.rotation.x = float(q_wxyz[1])
+                tf_msg.transform.rotation.y = float(q_wxyz[2])
+                tf_msg.transform.rotation.z = float(q_wxyz[3])
+                self.tf_broadcaster.sendTransform(tf_msg)
+
+                # express force in contact frame
+                # quat_to_rotmat returns world_from_frame
+                R_world_from_contact = quat_to_rotmat(q_wxyz)
+                R_contact_from_world = R_world_from_contact.T
+                f_contact = R_contact_from_world @ f_lin_world
+
+                wmsg = WrenchStamped()
+                wmsg.header.stamp = now_stamp
+                wmsg.header.frame_id = frame_id
+                wmsg.wrench.force.x = float(f_contact[0])
+                wmsg.wrench.force.y = float(f_contact[1])
+                wmsg.wrench.force.z = float(f_contact[2])
+                wmsg.wrench.torque.x = 0.0
+                wmsg.wrench.torque.y = 0.0
+                wmsg.wrench.torque.z = 0.0
+                self.contact_wrench_debug_pub.publish(wmsg)
+
+            else:
+                # no contact to show in this slot this tick
+                # move frame to origin and publish zero wrench so RViz Wrench shows nothing meaningful
+                tf_msg = TransformStamped()
+                tf_msg.header.stamp = now_stamp
+                tf_msg.header.frame_id = 'world'
+                tf_msg.child_frame_id = frame_id
+                tf_msg.transform.translation.x = 0.0
+                tf_msg.transform.translation.y = 0.0
+                tf_msg.transform.translation.z = -9999.0  # bury it far below view
+                tf_msg.transform.rotation.w = 1.0
+                tf_msg.transform.rotation.x = 0.0
+                tf_msg.transform.rotation.y = 0.0
+                tf_msg.transform.rotation.z = 0.0
+                self.tf_broadcaster.sendTransform(tf_msg)
+
+                wmsg = WrenchStamped()
+                wmsg.header.stamp = now_stamp
+                wmsg.header.frame_id = frame_id
+                wmsg.wrench.force.x = 0.0
+                wmsg.wrench.force.y = 0.0
+                wmsg.wrench.force.z = 0.0
+                wmsg.wrench.torque.x = 0.0
+                wmsg.wrench.torque.y = 0.0
+                wmsg.wrench.torque.z = 0.0
+                self.contact_wrench_debug_pub.publish(wmsg)
+
+        # now compute and publish total wrench on the base link
+        if BASE_LINK in self.contact_wrenches_world:
+            wrench_world_sum = self.contact_wrenches_world[BASE_LINK]
+        else:
+            wrench_world_sum = np.zeros(6, dtype=float)
+
+        f_world_sum   = wrench_world_sum[0:3]
+        tau_world_sum = wrench_world_sum[3:6]
+
+        base_quat_wxyz = self.get_quat_for_link(BASE_LINK)
+        R_world_from_base = quat_to_rotmat(base_quat_wxyz)
+        R_base_from_world = R_world_from_base.T
+
+        f_body   = R_base_from_world @ f_world_sum
+        tau_body = R_base_from_world @ tau_world_sum
+
+        w_total = WrenchStamped()
+        w_total.header.stamp = now_stamp
+        w_total.header.frame_id = BASE_LINK
+        w_total.wrench.force.x  = float(f_body[0])
+        w_total.wrench.force.y  = float(f_body[1])
+        w_total.wrench.force.z  = float(f_body[2])
+        w_total.wrench.torque.x = float(tau_body[0])
+        w_total.wrench.torque.y = float(tau_body[1])
+        w_total.wrench.torque.z = float(tau_body[2])
+
+        self.contact_wrench_pub.publish(w_total)
 
 
     def build_bodies(self, link_list, kind):
@@ -253,13 +403,31 @@ class CollisionNode(Node):
             )
             q = t.transform.rotation
             p = t.transform.translation
+
+            # cache latest world pose for this link
+            body["last_world_pos"] = np.array([p.x, p.y, p.z], dtype=float)
+            body["last_world_quat"] = np.array([q.w, q.x, q.y, q.z], dtype=float)  # wxyz
+
+            # update FCL object transform for collision math
             body["fcl_obj"].setTransform(
                 fcl.Transform([q.w, q.x, q.y, q.z], [p.x, p.y, p.z])
             )
             return True
         except Exception:
             return False
-        
+
+    def get_link_position_world(self, link_name):
+        for b in (self.bodies_robot + self.bodies_env):
+            if b["name"] == link_name and "last_world_pos" in b:
+                return b["last_world_pos"]
+        return np.array([0.0, 0.0, 0.0], dtype=float)
+
+    def get_quat_for_link(self, link_name):
+        for b in (self.bodies_robot + self.bodies_env):
+            if b["name"] == link_name and "last_world_quat" in b:
+                return b["last_world_quat"]
+        return np.array([1.0, 0.0, 0.0, 0.0], dtype=float)
+
 
 def main():
     rclpy.init()
