@@ -26,7 +26,7 @@ from geometry_msgs.msg import Pose
 from visualization_msgs.msg import Marker, InteractiveMarker, InteractiveMarkerControl, InteractiveMarkerFeedback
 from interactive_markers.interactive_marker_server import InteractiveMarkerServer
 from interactive_markers.menu_handler import MenuHandler
-from rclpy.qos import QoSProfile, QoSHistoryPolicy
+from rclpy.qos import QoSProfile, QoSHistoryPolicy, QoSDurabilityPolicy, QoSReliabilityPolicy
 from robot import Robot
 import tf2_ros
 from geometry_msgs.msg import TransformStamped
@@ -38,6 +38,7 @@ import sensor_msgs_py.point_cloud2 as pc2
 from scipy.spatial import ConvexHull
 from alpha_reach import Params as alpha
 from tf_transformations import quaternion_matrix, quaternion_from_matrix
+
 
 class BasicControlsNode(Node):
     def __init__(self):
@@ -57,9 +58,17 @@ class BasicControlsNode(Node):
         self.controllers = self.get_parameter('controllers').value
         self.total_no_efforts = self.no_robot * self.no_efforts
 
+        
         qos_profile = QoSProfile(history=QoSHistoryPolicy.KEEP_LAST, depth=10)
-        self.taskspace_pc_publisher_ = self.create_publisher(PointCloud2, 'workspace_pointcloud', qos_profile)
-        self.rov_pc_publisher_ = self.create_publisher(PointCloud2, 'base_pointcloud', qos_profile)
+        pointcloud_qos = QoSProfile(
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=1,
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+            reliability=QoSReliabilityPolicy.RELIABLE,
+        )
+
+        self.taskspace_pc_publisher_ = self.create_publisher(PointCloud2,'workspace_pointcloud',pointcloud_qos)
+        self.rov_pc_publisher_ = self.create_publisher(PointCloud2, 'base_pointcloud', pointcloud_qos)
 
         workspace_pts_path = os.path.join(package_share_directory, 'manipulator/workspace.npy')
         self.workspace_pts = np.load(workspace_pts_path)
@@ -175,14 +184,16 @@ class BasicControlsNode(Node):
         self.header.frame_id = self.vehicle_marker_frame
 
     def timer_callback(self):
-        self.header.stamp = self.get_clock().now().to_msg()
-        cloud_msg = pc2.create_cloud_xyz32(self.header, self.workspace_pts_list)
-        self.taskspace_pc_publisher_.publish(cloud_msg)
+        stamp_now = self.get_clock().now().to_msg()
+
+        self.broadcast_pose(stamp_now, self.last_vehicle_marker_pose, self.base_frame, self.vehicle_marker_frame)
+        
+        self.header.stamp = stamp_now
+        rov_cloud_msg = pc2.create_cloud_xyz32(self.header, self.workspace_pts_list)
+        self.taskspace_pc_publisher_.publish(rov_cloud_msg)
 
         cloud_msg = pc2.create_cloud_xyz32(self.header, self.rov_ellipsoid_cl_pts)
         self.rov_pc_publisher_.publish(cloud_msg)
-
-        self.broadcast_pose(self.last_vehicle_marker_pose, self.base_frame, self.vehicle_marker_frame)
 
         for k, robot in enumerate(self.robots):
             state = robot.get_state()
@@ -470,9 +481,9 @@ class BasicControlsNode(Node):
                 points.append(pt)
         return points
 
-    def broadcast_pose(self, pose, parent_frame, child_frame):
+    def broadcast_pose(self, stamp, pose, parent_frame, child_frame):
         t = TransformStamped()
-        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.stamp = stamp
         t.header.frame_id = parent_frame
         t.child_frame_id = child_frame
         t.transform.translation.x = pose.position.x

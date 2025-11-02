@@ -25,7 +25,8 @@ setup(
         ('lib/' + package_name, [package_name+'/alpha_reach.py']),
         ('lib/' + package_name, [package_name+'/task.py']),
         ('lib/' + package_name, [package_name+'/controller_msg.py']),
-        ('lib/' + package_name, [package_name+'/controllers.py'])
+        ('lib/' + package_name, [package_name+'/controllers.py']),
+        ('lib/' + package_name, [package_name+'/mesh_utils.py'])
     ],
 
     install_requires=['setuptools',
@@ -56,7 +57,8 @@ setup(
             'estimator_publisher = simlab.estimator:main',
             'mocap_publisher = simlab.use_mocap:main',
             'motive_publisher = simlab.sim_motive:main',
-            'stl_collision_node = simlab.stl_collision:main',
+            'collision_contact_node = simlab.collision_contact:main',
+            'voxelviz_node = simlab.voxel_viz:main',
         ],
     },
 )
